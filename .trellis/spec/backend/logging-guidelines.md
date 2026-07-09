@@ -1,6 +1,6 @@
 # 日志规范
 
-> 本项目没有集中式应用日志框架。运行时日志主要来自 Nginx access/error log、Gunicorn/Flask 默认输出，以及 `utils/` 脚本中的 `print()` 中文进度日志。
+> 本项目生产日志主要来自 Caddy 网关、Nginx 静态站点、Go API 容器 stdout/stderr 和 PostgreSQL 容器日志；离线内容维护日志来自 `utils/` 脚本中的 `print()` 中文进度输出。生产 Web 运行时不再包含 Gunicorn/Flask 日志。
 
 ---
 
@@ -8,24 +8,31 @@
 
 当前日志来源：
 
-- Nginx：`learn-liangliang.conf` 明确写入访问日志和错误日志。
-- Gunicorn/Flask：`Dockerfile` 通过 Gunicorn 启动 `server_flask:app`，使用 Gunicorn 默认日志行为。
+- Caddy：`gateway` 容器输出访问、TLS 和反向代理相关日志。
+- Nginx：`web` 容器输出静态站点访问和错误日志。
+- Go API：`api` 容器输出启动、迁移、管理员预置账号、请求处理和内部错误相关日志。
+- PostgreSQL：`db` 容器输出数据库启动、连接和错误日志。
 - Python 工具脚本：使用 `print()` 输出进度、成功、失败、异常、限流和保存率。
-- Shell 脚本：`restart_nginx.sh`、`utils/03_patch_zhuanlan.sh` 使用命令输出和 `echo`。
+- Shell 脚本：`utils/03_patch_zhuanlan.sh` 使用命令输出和 `echo`；该脚本包含提交/推送命令，自动化执行前必须人工确认。
 
-当前没有使用 Python `logging` 模块，也没有 JSON 结构化日志、trace id、链路追踪或第三方日志平台配置。
+排查生产问题时优先使用：
+
+```bash
+docker compose ps
+docker compose logs -f gateway web api db
+```
 
 ---
 
 ## 日志级别
 
-项目中没有显式日志级别枚举。按当前实践，可以用输出内容区分语义：
+项目中没有统一跨语言日志级别枚举。按当前实践，可以用输出内容区分语义：
 
 - 进度类：`进度: 1/10`、`开始处理专栏`、`共发现 X 个文件`。
-- 成功类：`已保存`、`下载成功`、`Git 操作完成`。
+- 成功类：`已保存`、`下载成功`、管理员账号初始化成功、数据库迁移完成。
 - 跳过类：`已存在，跳过`。
 - 可重试问题：`被限流，Xs后重试`、`下载异常`。
-- 不可恢复或当前项失败：`下载失败，状态码`、`抓取失败`、`最多重试X次，放弃`。
+- 不可恢复或当前项失败：`下载失败，状态码`、`抓取失败`、`最多重试X次，放弃`、API 内部错误。
 
 真实示例：
 
@@ -39,20 +46,40 @@ print(f"保存率: {success}/{total} = {success/total:.2%}")
 
 ---
 
-## Nginx 日志
+## 容器日志
 
-`learn-liangliang.conf` 中配置了固定日志路径：
+### Caddy 网关
 
-```nginx
-access_log /data/logs/ngx.learn-liangliang.access.log;
-error_log /data/logs/ngx.learn-liangliang.error.log;
+`deploy/caddy/Caddyfile` 中的分流规则：
+
+```caddyfile
+handle /api/* {
+    reverse_proxy api:8080
+}
+
+handle {
+    reverse_proxy web:80
+}
 ```
 
-Nginx 同时承担以下运行保护，排查访问问题时应结合 access/error log：
+如果出现 502/503，应检查目标容器是否健康、服务名是否正确、`api` 是否监听 `:8080`、`web` 是否监听 `:80`。
 
-- `limit_req_zone` 和 `limit_req`：按 IP 限速，`rate=5r/s`，`burst=10 nodelay`。
-- 静态目录缓存：`assets|img|live-2d|static|PDF` 以及中文内容目录设置 `expires 30d`。
-- 兜底代理：`proxy_pass http://127.0.0.1:60000`。
+### Nginx 静态站点
+
+`deploy/nginx/default.conf` 负责静态路径映射、内部目录拒绝和缓存。排查静态资源 403/404 时应检查：
+
+- 请求是否误用了 `/content/...` 物理路径。
+- `try_files $uri $uri/ /content$uri /content$uri/index.html /content$uri/ =404` 是否仍存在。
+- `backend|deploy|utils|ssl|content` 拒绝规则是否命中。
+
+### Go API
+
+Go API 日志应输出到 stdout/stderr，便于 Docker 收集。新增日志时应避免打印：
+
+- 明文密码。
+- 会话 token 原文。
+- 数据库连接串中的密码。
+- Cookie 完整值。
 
 ---
 
@@ -91,7 +118,7 @@ if os.path.exists(save_path):
 - 写入位置：例如 `已保存：{save_path}`、`已下载静态资源: {resource_path}`。
 - 失败原因：HTTP 状态码、异常信息、被限流后的等待时间。
 - 跳过原因：文件已存在、链接为空、没有找到目标内容等。
-- 部署检查：`restart_nginx.sh` 中保留 `nginx -t` 输出，reload 前必须能看到配置测试结果。
+- 部署检查：`docker compose config` 输出、容器状态、关键容器日志。
 
 ---
 
@@ -100,11 +127,12 @@ if os.path.exists(save_path):
 - 不要新增输出代理密码、密钥、证书私钥内容或其他敏感信息。
 - `utils/proxy_pool.py` 当前 `test_all_proxies()` 会打印完整代理 URL，其中包含账号和密码；后续修改时应避免扩大这种输出范围。
 - 不要把大量 HTML 正文、PDF 二进制内容或完整响应体直接打印到日志。
-- 不要在前端 `static/index.js` 中新增过多 `console.log` 输出；当前已有 `console.log(path)`、`console.log(cookie)`、`console.log("title=" + title)` 等调试输出，新增功能应谨慎，避免污染浏览器控制台。
+- 不要在前端 `static/index.js` 或 `static/reading-progress.js` 中新增过多 `console.log` 输出；新增功能应谨慎，避免污染浏览器控制台。
+- 不要在 Go API 日志中打印明文密码、session token、Cookie 或带密码的数据库连接串。
 
 ---
 
-## 何时引入 logging 模块
+## 何时引入更正式的日志机制
 
 当前简单脚本使用 `print()` 与现状一致。只有在以下情况明确出现时，才考虑把某个脚本迁移到 Python `logging`：
 
@@ -112,4 +140,4 @@ if os.path.exists(save_path):
 - 脚本长期运行，日志需要写入文件并轮转。
 - 同一脚本被自动化定时任务调用，需要机器可解析的日志格式。
 
-即便引入 `logging`，也应优先局部改造目标脚本，不要为了统一风格一次性重写所有 `utils/*.py`。
+Go API 如后续需要审计、追踪请求耗时或排查线上问题，可在 `backend/` 内引入结构化日志中间件，但应先明确字段、敏感信息脱敏规则和输出量控制，不要影响静态站点访问性能。

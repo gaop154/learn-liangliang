@@ -1,45 +1,110 @@
 # 数据与持久化规范
 
-> 本项目当前没有数据库、ORM、迁移工具或服务端业务数据模型。所谓“数据”主要是仓库中的静态文件、归档 HTML/PDF、资源文件，以及少量脚本状态文件。本规范记录现状，避免后续任务凭空引入数据库方案。
+> 本项目当前有两类持久化：生产阅读进度数据存放在 PostgreSQL；静态归档内容、资源文件和离线脚本状态仍存放在仓库文件系统中。不要再把项目描述为“没有数据库”，也不要把 `utils/task.json` 当成生产 API 数据源。
 
 ---
 
 ## 总览
 
-当前持久化方式是文件系统和 Git 仓库：
+当前持久化方式：
 
-- 页面内容：`index.html`、`专栏/**/*.md.html`、`文章/**/*.md.html`、`极客时间/**/*.md.html`、`恋爱必修课/**/*.md.html`。
-- PDF 内容：`PDF/*.pdf` 和 `PDF/index.html`。
-- 静态资源：`static/`、`assets/`、`img/`、`live-2d/`。
+- PostgreSQL：用户、会话和阅读进度数据，由 `db` 容器和 `postgres_data` volume 持久化。
+- 页面内容：`index.html`、`content/专栏/**/*.md.html`、`content/文章/**/*.md.html`、`content/极客时间/**/*.md.html`、`content/恋爱必修课/**/*.md.html`。
+- PDF 内容：`content/PDF/*.pdf` 和 `content/PDF/index.html`。
+- 静态资源：`static/`、`content/assets/`、`img/`、`live-2d/`。
 - 脚本批处理状态：`utils/task.json`。
-- 部署配置：`Dockerfile`、`docker-compose.yml`、`learn-liangliang.conf`。
+- 部署配置：`docker-compose.yml`、`deploy/caddy/Caddyfile`、`deploy/nginx/default.conf`、`backend/Dockerfile`。
+- Python 工具脚本依赖：`requirements.txt` 仅包含 `requests`、`beautifulsoup4` 等离线脚本依赖。
 
-仓库中没有 `models/`、`migrations/`、数据库连接配置、SQL 文件或表结构定义。`requirements.txt` 只包含 `flask`、`gunicorn`、`requests`、`beautifulsoup4`、`gevent`，没有 SQLAlchemy、Alembic、Django ORM、PyMySQL、psycopg 等数据库依赖。
+生产 Web 运行时不再使用 Flask/Gunicorn，也不依赖根目录 Python `Dockerfile`。
+
+---
+
+## PostgreSQL 数据模型
+
+### users
+
+保存管理员预置账号和后续可扩展用户账号。密码只保存哈希，不保存明文。
+
+```sql
+CREATE TABLE users (
+    id BIGSERIAL PRIMARY KEY,
+    username VARCHAR(64) NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    display_name VARCHAR(64),
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+### sessions
+
+保存会话 token 的哈希、过期时间和撤销时间。Cookie 中的 token 原文不能落库。
+
+```sql
+CREATE TABLE sessions (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at TIMESTAMPTZ NOT NULL,
+    revoked_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+### reading_progress
+
+按 `(user_id, article_path)` 唯一保存单篇文章阅读进度。
+
+```sql
+CREATE TABLE reading_progress (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    article_path TEXT NOT NULL,
+    article_title TEXT NOT NULL,
+    progress_percent INT NOT NULL DEFAULT 0,
+    scroll_y INT NOT NULL DEFAULT 0,
+    finished BOOLEAN NOT NULL DEFAULT FALSE,
+    last_read_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, article_path),
+    CHECK (progress_percent >= 0 AND progress_percent <= 100),
+    CHECK (scroll_y >= 0)
+);
+```
 
 ---
 
 ## 查询与读取模式
 
-### Flask 静态文件读取
+### Go API 读写 PostgreSQL
 
-`server_flask.py` 通过文件系统判断路径并返回静态文件：
+Go API 通过 `pgx` 和 `sqlc` 访问数据库：
 
-```python
-file_path = os.path.join(BASE_DIR, filename)
+- SQL 查询定义放在 `backend/internal/db/queries/`。
+- sqlc 生成代码放在 `backend/internal/db/sqlc/`。
+- 处理器不应手写复杂 SQL 或绕过已有 DB 封装。
+- 跨接口共享的数据格式应由 Go 类型、SQL 约束和前端脚本共同遵守，不要各自定义一套字段名。
 
-if os.path.isfile(file_path):
-    return send_from_directory(BASE_DIR, filename)
-elif os.path.isdir(file_path):
-    index_path = os.path.join(file_path, 'index.html')
-    if os.path.isfile(index_path):
-        return send_from_directory(file_path, 'index.html')
+阅读进度按 `(user_id, article_path)` upsert。`article_path` 必须是公开 canonical URL，例如 `/文章/A.md.html`，不能保存 `/content/文章/A.md.html`。
+
+### Nginx 静态文件读取
+
+`deploy/nginx/default.conf` 通过 `try_files` 将公开旧 URL 映射到物理 `content/` 路径：
+
+```nginx
+location / {
+    try_files $uri $uri/ /content$uri /content$uri/index.html /content$uri/ =404;
+}
 ```
 
-现有服务不查询数据库；访问 URL 与仓库文件路径直接对应。路径处理时已有基础防护：URL 解码后拒绝以 `.` 开头或包含 `..` 的路径。
+`/content/...` 是物理路径，不作为主公开 URL；配置中必须拒绝直接暴露 `content/`、`backend/`、`deploy/`、`utils/` 等内部目录。
 
 ### 工具脚本读取 HTML/PDF 列表
 
-工具脚本通常先读取本地 `index.html`，再用 BeautifulSoup 解析链接：
+工具脚本通常先读取本地 `index.html` 或 `content/<分类>/index.html`，再用 BeautifulSoup 解析链接：
 
 ```python
 # utils/04_patch_pdf.py
@@ -52,18 +117,26 @@ soup = BeautifulSoup(html, "html.parser")
 
 ### JSON 状态文件
 
-`utils/gen_task_json.py` 会根据 `专栏/` 下的目录生成 `utils/task.json`：
+`utils/gen_task_json.py` 会根据内容目录生成 `utils/task.json`：
 
 ```python
 tasks = [{"name": z, "status": "未完成"} for z in zhuanlans]
 json.dump(tasks, f, ensure_ascii=False, indent=2)
 ```
 
-`utils/03_patch_zhuanlan.sh` 使用 `jq` 读取和更新 `utils/task.json` 中的 `status` 字段。这个 JSON 文件只是批处理状态，不是业务数据库。
+`utils/03_patch_zhuanlan.sh` 使用 `jq` 读取和更新 `utils/task.json` 中的 `status` 字段。这个 JSON 文件只是批处理状态，不是生产数据库或 API 数据源。
 
 ---
 
 ## 写入模式
+
+### 数据库写入
+
+- 用户密码必须先哈希再写入 `users.password_hash`。
+- 会话只保存 token hash，不保存 token 原文。
+- 阅读进度保存使用 upsert，避免同一用户同一文章产生重复记录。
+- `last_read_at`、`updated_at` 应随更新刷新。
+- 数据库结构变更必须通过 `backend/migrations/` 管理，并提供可回滚或可解释的 down 脚本。
 
 ### 内容抓取写入
 
@@ -98,13 +171,23 @@ os.makedirs(os.path.dirname(local_path), exist_ok=True)
 
 ## 迁移规范
 
-当前没有数据库迁移。涉及内容结构变更时，实际“迁移”是对仓库文件进行批量转换或修补，例如：
+### 数据库迁移
 
-- `utils/03_patch_donation_md_links.py` 下载并修补 `assets/捐赠.md.html` 及其资源路径。
+- 迁移脚本放在 `backend/migrations/`。
+- 新增表、索引、约束时必须考虑现有数据兼容性。
+- 与阅读进度相关的唯一键、范围检查和索引不能只在前端校验。
+- PostgreSQL 数据通过 Docker volume 持久化；部署文档必须提醒备份 `postgres_data` 或使用 `pg_dump`。
+
+### 内容文件迁移
+
+涉及内容结构变更时，实际“迁移”是对仓库文件进行批量转换或修补，例如：
+
+- `utils/03_patch_donation_md_links.py` 下载并修补捐赠页及其资源路径。
 - `utils/03_patch_others.py` 将远端 `.md` 内容保存为本地 `.md.html`，并把 HTML 中的 `.md` 链接替换为 `.md.html`。
-- `utils/04_patch_pdf.py` 下载 `PDF/index.html` 中引用的 PDF。
+- `utils/04_patch_pdf.py` 下载 `content/PDF/index.html` 中引用的 PDF。
+- `utils/migrate_content_root.py` 将旧根目录内容迁移到 `content/` 物理根，并保持公开 URL 不变。
 
-若未来需要批量改写归档文件，应新增或修改 `utils/` 下的脚本，并在运行前说明会影响哪些目录。不要为这类静态文件迁移引入 Alembic、Flyway、Liquibase 或 Java Mapper/XML 体系。
+若未来需要批量改写归档文件，应新增或修改 `utils/` 下的脚本，并在运行前说明会影响哪些目录。不要为内容文件迁移引入 Java Mapper/XML 体系。
 
 ---
 
@@ -112,6 +195,7 @@ os.makedirs(os.path.dirname(local_path), exist_ok=True)
 
 - 文件和目录名称保留原内容语义，允许中文、空格和标点，例如 `content/专栏/22 讲通关 Go 语言-完/`。
 - 归档 Markdown 转 HTML 文件保留 `.md.html` 双后缀；现有脚本依赖这个约定。
+- 阅读进度 `article_path` 使用公开旧 URL，例如 `/专栏/xxx/001.md.html`。
 - `utils/task.json` 中状态值当前是中文：`未完成`、`已完成`。
 - 代理账号列表当前在 `utils/proxy_pool.py` 的 `proxy_accounts` 中以元组保存。
 
@@ -184,8 +268,9 @@ function getArticlePath() {
 
 ## 常见风险与禁止事项
 
-- 不要为当前需求新增数据库或 ORM；现有站点没有数据库运行时依赖。
+- 不要重新引入 Flask/Gunicorn 或 Python Web 运行时；Python 只保留为离线内容维护工具。
 - 不要把 `utils/task.json` 当成服务端 API 数据源；它只是抓取脚本的本地批处理状态。
 - 不要在轻量检查中运行会联网下载大量内容的脚本，例如 `utils/03_patch_others.py`、`utils/04_patch_pdf.py`，除非任务明确要求并已确认影响范围。
 - 不要在代码或文档中新增真实代理账号、密钥或访问令牌；`utils/proxy_pool.py` 当前已包含代理账号样式信息，后续应避免扩大泄露范围。
-- 不要把中文路径批量转义或重命名为英文路径；Nginx、HTML 链接和 Flask 文件查找都依赖当前文件布局。
+- 不要把中文路径批量转义或重命名为英文路径；Nginx、HTML 链接、阅读进度和工具脚本都依赖当前文件布局。
+- 不要删除 PostgreSQL volume 或把生产数据库改成容器内临时文件；阅读进度必须跨容器重建保留。

@@ -1,5 +1,4 @@
-flask
-gunicorn
+# Python 仅用于离线内容维护脚本（utils/*.py），不再作为生产 Web 运行时。
+# 生产部署请使用根 docker-compose.yml 中的 Caddy + Nginx 静态站点 + Go API + PostgreSQL。
 requests
 beautifulsoup4
-gevent

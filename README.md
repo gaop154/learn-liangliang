@@ -53,17 +53,21 @@
   - **content/assets/**：内容页引用的归档资源，例如捐赠页资源
 - **static/**：前端样式、脚本与公共静态资源
 - **img/**：页面截图与图片资源
+- **backend/**：Go API 服务，提供登录、会话和阅读进度同步接口
+- **deploy/caddy/**：生产入口 Caddy 配置，负责 `/api/*` 与静态站点分流
+- **deploy/nginx/**：静态站点容器内的 Nginx 配置，负责旧公开 URL 到 `content/` 的内部映射
+- **utils/**：离线内容抓取、修补和迁移脚本；这些脚本可使用 Python 依赖，但不属于生产 Web 运行时
 - **index.html**：网站首页
 - 公开访问 URL 仍保持旧路径，例如 `/专栏/...`、`/文章/...`、`/PDF/...`，不会暴露为 `/content/...`。
-- 其他辅助脚本和配置文件
+- 旧 Flask/Gunicorn 运行时已移除，生产部署不再使用 Python 提供 Web 服务。
 
 ## 4. Docker 部署 🚀
 
-第一版部署使用 Docker Compose 编排：
+生产部署使用 Docker Compose 编排，运行时边界固定为 Caddy + Nginx 静态站点 + Go API + PostgreSQL。Python 只用于本地或离线执行 `utils/*.py` 内容维护脚本，不参与生产 Web 请求链路。
 
-- `gateway`：Caddy 入口，对外暴露 80 端口。
-- `web`：Nginx 静态站点，托管现有 HTML、PDF、图片和前端脚本。
-- `api`：Go 后端 API，提供登录和阅读进度同步。
+- `gateway`：Caddy 入口，对外暴露 80/443，负责将 `/api/*` 转发到 Go API，其余请求转发到静态站点。
+- `web`：Nginx 静态站点，托管现有 HTML、PDF、图片和前端脚本，并把旧公开 URL 内部映射到 `content/`。
+- `api`：Go 后端 API，提供登录、会话和阅读进度同步。
 - `db`：PostgreSQL，使用 `postgres_data` volume 持久化数据。
 
 ### 4.1 CentOS 安装 Docker
