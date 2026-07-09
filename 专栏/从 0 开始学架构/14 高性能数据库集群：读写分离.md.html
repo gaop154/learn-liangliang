@@ -273,7 +273,7 @@
 <p>将读写操作区分开来，然后访问不同的数据库服务器，一般有两种方式：<strong>程序代码封装</strong>和<strong>中间件封装</strong>。</p>
 <p>1.程序代码封装</p>
 <p>程序代码封装指在代码中抽象一个数据访问层（所以有的文章也称这种方式为“中间层封装”），实现读写操作分离和数据库服务器连接的管理。例如，基于Hibernate进行简单封装，就可以实现读写分离，基本架构是：</p>
-<p><img alt="img" src="assets/f8d538f9201e3ebee37dfdcd1922e9df.jpg?wh=2661*2178"/></p>
+<p><img alt="img" src="assets/f8d538f9201e3ebee37dfdcd1922e9df_wh_2661x2178.jpg"/></p>
 <p>程序代码封装的方式具备几个特点：</p>
 <ul>
 <li>实现简单，而且可以根据业务做较多定制化的功能。</li>
@@ -284,7 +284,7 @@
 <p><img alt="img" src="assets/3b87f6ce297c4af219fa316d29eb5507.jpg"/></p>
 <p>2.中间件封装</p>
 <p>中间件封装指的是独立一套系统出来，实现读写操作分离和数据库服务器连接的管理。中间件对业务服务器提供SQL兼容的协议，业务服务器无须自己进行读写分离。对于业务服务器来说，访问中间件和访问数据库没有区别，事实上在业务服务器看来，中间件就是一个数据库服务器。其基本架构是：</p>
-<p><img alt="img" src="assets/2a2dba7f07581fd055d9cd5a3aa8388e.jpg?wh=2918*1905"/></p>
+<p><img alt="img" src="assets/2a2dba7f07581fd055d9cd5a3aa8388e_wh_2918x1905.jpg"/></p>
 <p>数据库中间件的方式具备的特点是：</p>
 <ul>
 <li>能够支持多种编程语言，因为数据库中间件对业务服务器提供的是标准SQL接口。</li>
@@ -294,7 +294,7 @@
 </ul>
 <p>由于数据库中间件的复杂度要比程序代码封装高出一个数量级，一般情况下建议采用程序语言封装的方式，或者使用成熟的开源数据库中间件。如果是大公司，可以投入人力去实现数据库中间件，因为这个系统一旦做好，接入的业务系统越多，节省的程序开发投入就越多，价值也越大。</p>
 <p>目前的开源数据库中间件方案中，MySQL官方先是提供了MySQL Proxy，但MySQL Proxy一直没有正式GA，现在MySQL官方推荐MySQL Router。MySQL Router的主要功能有读写分离、故障自动切换、负载均衡、连接池等，其基本架构如下：</p>
-<p><img alt="img" src="assets/c9c7a3f3602a05d428484c571c1d4faf.jpg?wh=3311*2282"/></p>
+<p><img alt="img" src="assets/c9c7a3f3602a05d428484c571c1d4faf_wh_3311x2282.jpg"/></p>
 <p>奇虎360公司也开源了自己的数据库中间件Atlas，Atlas是基于MySQL Proxy实现的，基本架构如下：</p>
 <p><img alt="图片来源网络" src="assets/75058a4145bb78880faa4e9c74d9d031.png"/></p>
 <p>以下是官方介绍，更多内容你可以参考<a href="https://github.com/Qihoo360/Atlas/wiki/Atlas的架构" target="_blank">这里</a>。</p>

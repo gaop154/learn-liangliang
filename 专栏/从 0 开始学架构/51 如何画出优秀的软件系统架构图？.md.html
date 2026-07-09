@@ -384,7 +384,7 @@
 </ol>
 <p>【参考案例】</p>
 <p>如果系统比较简单，那么基本上应用架构和系统架构是等价的，可以参考MongoDB Sharding的应用架构图，如下所示：</p>
-<p><img alt="图片" src="assets/3ab6145445692f65e72a69a4ee8ffd5c.png?wh=1310x927"/></p>
+<p><img alt="图片" src="assets/3ab6145445692f65e72a69a4ee8ffd5c_wh_1310x927.png"/></p>
 <p>我们可以看到，这张图中的Router（mongos）、Config Servers 和 Shard（replica set），既包含了系统架构的角色信息（Router、Config Servers 和 Shard），又包含了应用信息（mongos、Config Servers 和 Shard）。</p>
 <p>如果系统比较复杂，按照架构分层的角度来看，应用架构已经到了可执行程序这一层，例如支付中台这一类的系统，包含的应用可能有几百上千个，如果把整个支付中台所有的应用都在一张图里面展示出来，信息太多太密，可能会导致架构图都看不清。</p>
 <p>这种情况下，应用架构一般都是按照子域来画应用架构图，可以参考支付中台的会员域的应用架构图，如下所示：</p>

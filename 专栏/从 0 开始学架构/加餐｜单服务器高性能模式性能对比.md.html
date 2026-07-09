@@ -272,7 +272,7 @@
 <ol>
 <li>prethreaded模式在12000并发连接的时候，性能急剧下降。</li>
 </ol>
-<p><img alt="img" src="assets/3acb8af02e70c68bfa00e900c0d0fe08.png?wh=1536*354?wh=1536*354"/></p>
+<p><img alt="img" src="assets/3acb8af02e70c68bfa00e900c0d0fe08_wh_1536x354.png"/></p>
 <p>推测是触发了C10K问题，线程上下文切换的性能消耗超越了IO处理的性能消耗。</p>
 <ol>
 <li>poll模式随着并发数增多稳定下降，因为需要遍历的描述符越多，其性能越低。</li>
