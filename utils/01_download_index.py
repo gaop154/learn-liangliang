@@ -12,8 +12,9 @@ headers = {
 response = requests.get(url, headers=headers)
 response.encoding = response.apparent_encoding  # 自动识别编码
 
-# 计算上一级目录的 index.html 路径
+# 计算项目根目录与内容目录路径。首页仍写入根目录，文章相关内容写入 content/。
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+content_dir = os.path.join(base_dir, "content")
 save_path = os.path.join(base_dir, "index.html")
 
 if response.status_code == 200:

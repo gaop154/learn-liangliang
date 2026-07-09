@@ -23,15 +23,27 @@
       return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[ch];
     });
   }
-  function safePath(path) {
-    if (!path || !path.startsWith('/') || path.startsWith('//')) {
+  function canonicalArticlePath(path) {
+    path = path || '/';
+    try {
+      path = decodeURI(path);
+    } catch (e) {}
+    path = path.replace(/\\/g, '/');
+    if (!path || path.charAt(0) !== '/') {
       return '/';
     }
-    return path;
+    path = path.replace(/\/+/g, '/');
+    if (path === '/content') {
+      return '/';
+    }
+    if (path.indexOf('/content/') === 0) {
+      path = path.substring('/content'.length);
+    }
+    return path.replace(/\/+/g, '/');
   }
   function articleHref(path) {
     try {
-      return new URL(safePath(path), window.location.origin).pathname;
+      return new URL(canonicalArticlePath(path), window.location.origin).pathname;
     } catch (e) {
       return '/';
     }
@@ -49,7 +61,6 @@
   }
   function load() {
     jsonFetch('/api/auth/me', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
-      .then(function (resp) { return resp.json(); })
       .then(function (me) {
         if (!me.authenticated) {
           window.location.href = '/login.html?next=' + encodeURIComponent('/reading-history.html');

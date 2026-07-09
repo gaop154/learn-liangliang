@@ -3,12 +3,13 @@ import re
 import requests
 from bs4 import BeautifulSoup
 
-# 获取 index.html 路径（上一级目录）
+# 获取项目根目录与内容目录。文章相关内容默认写入 content/，公开 URL 仍保持旧路径。
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+content_dir = os.path.join(base_dir, "content")
 
 # index_path = os.path.join(base_dir, "index.html")
 column_name = "专栏"  # 处理专栏
-index_path = os.path.join(base_dir, column_name, "index.html")   # 处理专栏
+index_path = os.path.join(content_dir, column_name, "index.html")   # 处理专栏
 
 base_url = "https://learn.lianglianglee.com"
 headers = {
@@ -36,8 +37,8 @@ for a in soup.find_all("a", class_="menu-item"):
 print(f"共发现 {len(menu_items)} 个菜单项，开始处理...")
 
 for menu_id, href in menu_items:
-    # dir_path = os.path.join(base_dir, menu_id)
-    dir_path = os.path.join(base_dir, column_name, menu_id) # 处理专栏
+    # dir_path = os.path.join(content_dir, menu_id)
+    dir_path = os.path.join(content_dir, column_name, menu_id) # 处理专栏
     os.makedirs(dir_path, exist_ok=True)
     save_path = os.path.join(dir_path, "index.html")
     url = base_url + href

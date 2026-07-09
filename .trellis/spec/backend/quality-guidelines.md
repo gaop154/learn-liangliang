@@ -32,14 +32,15 @@ if filename.startswith('.') or '..' in filename:
 
 ### 2. 不破坏静态归档路径
 
-HTML 和脚本依赖当前路径形态：
+HTML 和脚本依赖当前公开 URL 形态：
 
 - 首页：`index.html`。
-- 分类目录：`专栏/`、`文章/`、`极客时间/`、`恋爱必修课/`、`PDF/`。
+- 公开分类 URL：`/专栏/`、`/文章/`、`/极客时间/`、`/恋爱必修课/`、`/PDF/`、`/assets/`。
+- 物理内容根：`content/专栏/`、`content/文章/`、`content/极客时间/`、`content/恋爱必修课/`、`content/PDF/`、`content/assets/`。
 - 内容文件：`*.md.html`。
-- 静态资源：`static/`、`assets/`、`img/`、`live-2d/`。
+- 公共静态资源：`static/`、`img/`、`live-2d/`。
 
-不要随意批量重命名中文目录、空格路径或 `.md.html` 后缀。
+不要随意批量重命名中文目录、空格路径或 `.md.html` 后缀。迁移内容文件时，应保持旧公开 URL 可访问，不能要求用户访问 `/content/...`。
 
 ### 3. 批量脚本要可控
 

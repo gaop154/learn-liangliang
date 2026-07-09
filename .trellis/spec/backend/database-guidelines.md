@@ -110,10 +110,75 @@ os.makedirs(os.path.dirname(local_path), exist_ok=True)
 
 ## 命名约定
 
-- 文件和目录名称保留原内容语义，允许中文、空格和标点，例如 `专栏/22 讲通关 Go 语言-完/`。
+- 文件和目录名称保留原内容语义，允许中文、空格和标点，例如 `content/专栏/22 讲通关 Go 语言-完/`。
 - 归档 Markdown 转 HTML 文件保留 `.md.html` 双后缀；现有脚本依赖这个约定。
 - `utils/task.json` 中状态值当前是中文：`未完成`、`已完成`。
 - 代理账号列表当前在 `utils/proxy_pool.py` 的 `proxy_accounts` 中以元组保存。
+
+---
+
+## Scenario: 阅读进度 articlePath 使用公开 canonical URL
+
+### 1. Scope / Trigger
+
+- Trigger：当内容物理路径迁移到 `content/`、修改阅读进度前端/后端，或调整阅读历史链接时，必须保证 `articlePath` 不使用物理 `/content/...` 路径。
+- Scope：阅读进度数据库键、查询参数和前端历史链接都使用公开旧 URL 作为 canonical path。
+
+### 2. Signatures
+
+- 前端保存字段：`articlePath: string`
+- 查询接口：`GET /api/reading-progress?articlePath=<path>`
+- 保存接口：`PUT /api/reading-progress`，请求体包含 `articlePath`
+- 后端规范化函数：`canonicalizeArticlePath(raw string) (string, error)`
+
+### 3. Contracts
+
+- `/content/文章/Java.md.html` 必须规范化为 `/文章/Java.md.html`。
+- `/content/专栏/x/index.html` 必须规范化为 `/专栏/x/index.html`。
+- `articlePath` 必须以 `/` 开头，不能是 `/`，不能包含路径穿越段 `..`，长度不超过 1024。
+- 阅读历史页生成链接时同样输出公开 canonical URL，不输出 `/content/...`。
+
+### 4. Validation & Error Matrix
+
+- `articlePath` 为空 -> `INVALID_REQUEST` / `articlePath 不能为空`。
+- `articlePath` 含 NUL、路径穿越或长度超过限制 -> `INVALID_REQUEST` / `articlePath 不合法`。
+- `articlePath=/content/...` -> 先规范化为旧公开路径，再保存或查询。
+- `articlePath=/content` 或 `/` -> 不作为文章路径保存。
+
+### 5. Good/Base/Bad Cases
+
+- Good：用户访问 `/文章/A.md.html`，数据库保存 `/文章/A.md.html`。
+- Base：手工访问 `/content/文章/A.md.html`，数据库仍保存 `/文章/A.md.html`。
+- Bad：同一篇文章分别保存 `/content/文章/A.md.html` 和 `/文章/A.md.html` 两条记录。
+
+### 6. Tests Required
+
+- `node --check static/reading-progress.js`：断言前端脚本语法正确。
+- `cd backend && go test ./...`：断言 Go 后端可编译。
+- 手动或自动检查保存请求 payload：访问旧 URL 时 `articlePath` 是旧公开路径。
+- 手动访问 `/content/...` 时，保存和阅读历史链接仍归一到旧公开路径。
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```js
+function getArticlePath() {
+    return window.location.pathname || '/';
+}
+```
+
+如果用户或内部链接访问 `/content/...`，阅读记录会和旧公开 URL 分裂。
+
+#### Correct
+
+```js
+function getArticlePath() {
+    return canonicalArticlePath(window.location.pathname || '/');
+}
+```
+
+保存和查询都使用稳定公开 URL。
 
 ---
 

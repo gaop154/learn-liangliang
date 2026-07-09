@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
+	"path"
 	"strconv"
 	"strings"
 
@@ -43,6 +45,12 @@ func (h *Handler) Upsert(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusBadRequest, "INVALID_REQUEST", "请求格式不正确")
 		return
 	}
+	canonicalPath, err := canonicalizeArticlePath(req.ArticlePath)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
+		return
+	}
+	req.ArticlePath = canonicalPath
 	if err := validateRequest(req); err != nil {
 		response.Error(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
 		return
@@ -63,9 +71,9 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	articlePath := strings.TrimSpace(r.URL.Query().Get("articlePath"))
-	if articlePath == "" {
-		response.Error(w, http.StatusBadRequest, "INVALID_REQUEST", "articlePath 不能为空")
+	articlePath, err := canonicalizeArticlePath(r.URL.Query().Get("articlePath"))
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
 		return
 	}
 
@@ -109,11 +117,49 @@ func (h *Handler) Recent(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
+func canonicalizeArticlePath(raw string) (string, error) {
+	articlePath := strings.TrimSpace(raw)
+	if articlePath == "" {
+		return "", errors.New("articlePath 不能为空")
+	}
+	if strings.Contains(articlePath, "\x00") || len(articlePath) > 1024 {
+		return "", errors.New("articlePath 不合法")
+	}
+	if decoded, err := url.PathUnescape(articlePath); err == nil {
+		articlePath = decoded
+	}
+	articlePath = strings.ReplaceAll(articlePath, "\\", "/")
+	for _, part := range strings.Split(articlePath, "/") {
+		if part == ".." {
+			return "", errors.New("articlePath 不合法")
+		}
+	}
+	if !strings.HasPrefix(articlePath, "/") {
+		articlePath = "/" + articlePath
+	}
+	articlePath = path.Clean(articlePath)
+	if articlePath == "." {
+		articlePath = "/"
+	}
+	if strings.HasPrefix(articlePath, "/content/") {
+		articlePath = strings.TrimPrefix(articlePath, "/content")
+	} else if articlePath == "/content" {
+		articlePath = "/"
+	}
+	if !strings.HasPrefix(articlePath, "/") {
+		articlePath = "/" + articlePath
+	}
+	if articlePath == "/" || strings.HasPrefix(articlePath, "//") || strings.Contains(articlePath, "/../") || strings.HasSuffix(articlePath, "/..") {
+		return "", errors.New("articlePath 不合法")
+	}
+	return articlePath, nil
+}
+
 func validateRequest(req upsertRequest) error {
 	if strings.TrimSpace(req.ArticlePath) == "" {
 		return errors.New("articlePath 不能为空")
 	}
-	if !strings.HasPrefix(req.ArticlePath, "/") || strings.HasPrefix(req.ArticlePath, "//") || strings.Contains(req.ArticlePath, "..") || len(req.ArticlePath) > 1024 {
+	if !strings.HasPrefix(req.ArticlePath, "/") || strings.HasPrefix(req.ArticlePath, "//") || len(req.ArticlePath) > 1024 {
 		return errors.New("articlePath 不合法")
 	}
 	if strings.TrimSpace(req.ArticleTitle) == "" {

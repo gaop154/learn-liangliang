@@ -17,6 +17,7 @@ import argparse
 
 '''
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+content_dir = os.path.join(base_dir, "content")
 
 
 base_url = "https://learn.lianglianglee.com"
@@ -37,9 +38,9 @@ def get_links():
                 links.append(href)
     return links
 
-def download_static_resources(html, base_url, html_file_dir, proxies, base_dir):
+def download_static_resources(html, base_url, html_file_dir, proxies, content_dir):
     soup = BeautifulSoup(html, "html.parser")
-    column_rel_path = os.path.relpath(html_file_dir, base_dir)
+    column_rel_path = os.path.relpath(html_file_dir, content_dir)
     for p in soup.find_all("p"):
         img = p.find("img", src=True)
         if img:
@@ -112,7 +113,7 @@ def main():
                 if resp.status_code == 200:
                     html = resp.text
                     # 下载静态资源并修改src为本地路径
-                    html = download_static_resources(html, base_url, assets_dir, proxies, base_dir)
+                    html = download_static_resources(html, base_url, assets_dir, proxies, content_dir)
                     # 全局替换.md为.md.html
                     html = re.sub(r'(?<!\.)\.md(?![\w.])', '.md.html', html)
                     with open(save_path, "w", encoding="utf-8") as f:
@@ -143,8 +144,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     column_name = args.column
     global index_path, column_dir
-    index_path = os.path.join(base_dir, column_name, "index.html")
-    column_dir = os.path.join(base_dir, column_name)
+    index_path = os.path.join(content_dir, column_name, "index.html")
+    column_dir = os.path.join(content_dir, column_name)
     main()
 
 

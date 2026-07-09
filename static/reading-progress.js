@@ -36,8 +36,27 @@
         });
     }
 
+    function canonicalArticlePath(path) {
+        path = path || '/';
+        try {
+            path = decodeURI(path);
+        } catch (e) {}
+        path = path.replace(/\\/g, '/');
+        if (!path || path.charAt(0) !== '/') {
+            path = '/' + path;
+        }
+        path = path.replace(/\/+/g, '/');
+        if (path === '/content') {
+            return '/';
+        }
+        if (path.indexOf('/content/') === 0) {
+            path = path.substring('/content'.length);
+        }
+        return path.replace(/\/+/g, '/');
+    }
+
     function getArticlePath() {
-        return window.location.pathname || '/';
+        return canonicalArticlePath(window.location.pathname || '/');
     }
 
     function isArticlePage() {

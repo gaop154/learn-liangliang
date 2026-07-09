@@ -10,7 +10,8 @@ headers = {
 }
 
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-assets_dir = os.path.join(base_dir, "assets")
+content_dir = os.path.join(base_dir, "content")
+assets_dir = os.path.join(content_dir, "assets")
 os.makedirs(assets_dir, exist_ok=True)
 
 # 1. 下载捐赠.md，保存为捐赠.md.html

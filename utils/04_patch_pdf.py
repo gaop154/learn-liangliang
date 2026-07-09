@@ -7,8 +7,9 @@ import random
 from proxy_pool import proxy_accounts
 
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-index_path = os.path.join(base_dir, "PDF", "index.html")
-pdf_dir = os.path.join(base_dir, "PDF")
+content_dir = os.path.join(base_dir, "content")
+index_path = os.path.join(content_dir, "PDF", "index.html")
+pdf_dir = os.path.join(content_dir, "PDF")
 base_url = "https://learn.lianglianglee.com"
 headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"

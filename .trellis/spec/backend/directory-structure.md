@@ -129,8 +129,75 @@ CMD ["gunicorn", "-w", "4", "-k", "gevent", "-b", "0.0.0.0:60000", "server_flask
 - 新的 Flask 路由或静态服务安全修补：优先在 `server_flask.py` 内小范围修改，除非文件明显失控，否则不要拆分成多层包。
 - 新的内容抓取/修补流程：放在 `utils/`，按现有数字前缀延续命名，并尽量支持命令行参数，避免硬编码只能处理一个栏目。
 - 新的全站前端增强：放在 `static/index.js` 或对应 CSS 文件中；如果是第三方静态库，放在 `static/` 或更明确的子目录。
-- 新的站点公共图片：根据用途放到 `img/` 或 `assets/`；内容页局部资源保持在对应内容目录的 `assets/` 子目录。
-- 部署相关变更：Docker 改 `Dockerfile`/`docker-compose.yml`，Nginx 改 `learn-liangliang.conf`，不要把运行配置散落到工具脚本中。
+- 新的站点公共图片：根据用途放到 `img/`；内容型页面和内容私有资源放到 `content/<分类>/...`，内容页局部图片保持在对应内容目录的 `assets/` 子目录。
+- 部署相关变更：Docker 改 `Dockerfile`/`docker-compose.yml`，Nginx 改 `deploy/nginx/default.conf` 或仍在使用的 `learn-liangliang.conf`，不要把运行配置散落到工具脚本中。
+
+---
+
+## Scenario: content 内容根目录与旧 URL 兼容
+
+### 1. Scope / Trigger
+
+- Trigger：当文章、专栏、PDF、捐赠页等内容型静态文件需要整理目录结构，或修改静态服务/Nginx/抓取脚本的内容路径时，必须遵守本契约。
+- Scope：`content/` 是物理内容根；公开 URL 继续保持历史路径，避免破坏站内链接、外部收藏、阅读进度和评论映射。
+
+### 2. Signatures
+
+- 迁移命令：`python utils/migrate_content_root.py [--dry-run|--execute]`
+- Flask 公开路径：`GET /<path:filename>`
+- Nginx 旧路径映射：`try_files /content$uri /content$uri/index.html ...`
+- 内容生成脚本输出根：`content_dir = os.path.join(base_dir, "content")`
+
+### 3. Contracts
+
+- 物理内容目录只能放在：`content/专栏/`、`content/文章/`、`content/极客时间/`、`content/恋爱必修课/`、`content/PDF/`、`content/assets/`。
+- 公开 URL 必须保持：`/专栏/...`、`/文章/...`、`/极客时间/...`、`/恋爱必修课/...`、`/PDF/...`、`/assets/...`。
+- `/content/...` 是物理路径，不作为主公开 URL；Nginx/Flask 应拒绝或避免直接暴露。
+- `static/`、`img/`、`live-2d/` 是全站公共资源目录，不迁入 `content/`。
+- 文章内私有图片继续使用同级相对路径 `assets/...`，整体迁移时必须保持页面和同级 `assets/` 的相对关系。
+
+### 4. Validation & Error Matrix
+
+- 源目录和目标目录同时存在 -> 迁移脚本必须报错并拒绝覆盖。
+- 请求路径包含隐藏路径、`..` 或直接访问 `/content/...` -> Flask 返回 403；Nginx deny。
+- 旧公开 URL 对应的 `content/` 文件不存在 -> 返回 404，不回退到敏感目录。
+- 修改 Nginx 配置但未在目标环境运行 `nginx -t` -> 结果必须标注“未验证”。
+
+### 5. Good/Base/Bad Cases
+
+- Good：`/专栏/从 0 开始学架构/index.html` 公开访问，Nginx 内部读取 `content/专栏/从 0 开始学架构/index.html`。
+- Base：`/static/index.js` 仍直接读取根目录 `static/index.js`。
+- Bad：把站内链接批量改成 `/content/专栏/...`，导致阅读进度和外部链接分裂。
+
+### 6. Tests Required
+
+- `python utils/migrate_content_root.py --dry-run`：断言只处理白名单内容目录，已迁移时只提示跳过。
+- `python -m py_compile server_flask.py utils/*.py`：断言 Flask 和脚本语法可加载。
+- 抽样访问旧 URL：断言 `/文章/index.html`、`/专栏/.../index.html`、`/PDF/index.html`、`/assets/捐赠.md.html` 仍可访问。
+- 静态资源抽样：断言 `/static/index.js`、`/img/github.svg`、`/live-2d/js/live2d.js` 未被 content 映射破坏。
+- Nginx 改动后在目标环境运行 `nginx -t`。
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```nginx
+location / {
+    try_files $uri $uri/ =404;
+}
+```
+
+迁移后旧 URL 只查根目录，`/专栏/...` 会 404。
+
+#### Correct
+
+```nginx
+location / {
+    try_files $uri $uri/ /content$uri /content$uri/index.html /content$uri/ =404;
+}
+```
+
+公开 URL 不变，物理文件从 `content/` 读取。
 
 ---
 
