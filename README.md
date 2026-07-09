@@ -70,7 +70,94 @@
 - `api`：Go 后端 API，提供登录、会话和阅读进度同步。
 - `db`：PostgreSQL，使用 `postgres_data` volume 持久化数据。
 
-### 4.1 CentOS 安装 Docker
+### 4.1 本地启动
+
+本地推荐也使用 Docker Compose 启动完整环境，避免手工安装 PostgreSQL、Nginx 和 Caddy。
+
+1. 复制环境变量文件：
+
+```bash
+cp .env.example .env
+```
+
+Windows PowerShell 可使用：
+
+```powershell
+Copy-Item .env.example .env
+```
+
+2. 编辑 `.env`，本地 HTTP 调试可以使用下面这组配置思路：
+
+```env
+SITE_DOMAIN=:80
+ACME_EMAIL=local@example.com
+
+POSTGRES_DB=learn_liangliang
+POSTGRES_USER=learn
+POSTGRES_PASSWORD=local_dev_password_123
+DATABASE_URL=postgres://learn:local_dev_password_123@db:5432/learn_liangliang?sslmode=disable
+
+APP_ADDR=:8080
+APP_COOKIE_NAME=learn_session
+APP_COOKIE_SECURE=false
+APP_SESSION_TTL_HOURS=720
+
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=local_admin_password_123
+ADMIN_DISPLAY_NAME=管理员
+```
+
+注意：
+
+- 本地使用 `SITE_DOMAIN=:80`，浏览器访问 `http://localhost/`。
+- 本地 HTTP 调试必须设置 `APP_COOKIE_SECURE=false`，否则浏览器不会在 HTTP 下发送登录 Cookie。
+- `POSTGRES_PASSWORD` 和 `DATABASE_URL` 中的密码必须保持一致。
+- `ADMIN_PASSWORD` 不能使用示例占位符，且至少 12 位。
+
+3. 启动：
+
+```bash
+docker compose up -d --build
+```
+
+4. 查看状态和日志：
+
+```bash
+docker compose ps
+docker compose logs -f api
+```
+
+5. 浏览器访问：
+
+```text
+http://localhost/
+```
+
+登录入口：
+
+```text
+http://localhost/login.html
+```
+
+阅读记录入口：
+
+```text
+http://localhost/reading-history.html
+```
+
+6. 停止本地环境：
+
+```bash
+docker compose down
+```
+
+如果想同时删除本地 PostgreSQL 数据卷，使用：
+
+```bash
+docker compose down -v
+```
+
+### 4.2 CentOS 安装 Docker
 
 ```bash
 sudo yum install -y yum-utils
@@ -90,7 +177,7 @@ sudo firewall-cmd --reload
 
 云服务器安全组也需要放行 80/443。生产环境建议使用域名访问，Caddy 会自动申请 HTTPS 证书。
 
-### 4.2 配置环境变量
+### 4.3 配置环境变量
 
 ```bash
 cp .env.example .env
@@ -107,7 +194,7 @@ cp .env.example .env
 
 生产环境保持 `APP_COOKIE_SECURE=true`；只有本地 HTTP 调试时才临时改为 `false`。
 
-### 4.3 启动
+### 4.4 生产启动
 
 ```bash
 docker compose up -d --build
@@ -138,7 +225,7 @@ https://你的域名/login.html
 https://你的域名/reading-history.html
 ```
 
-### 4.4 PostgreSQL 备份
+### 4.5 PostgreSQL 备份
 
 ```bash
 docker compose exec db sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > backup.sql
