@@ -247,6 +247,14 @@ function hide_canvas() {
     }, 500);
 })();
 
+// 动态加载阅读进度同步脚本
+(function() {
+    var script = document.createElement('script');
+    script.src = '/static/reading-progress.js';
+    script.defer = true;
+    document.body.appendChild(script);
+})();
+
 // 修改页脚内容
 (function() {
     // 查找所有包含版权信息的段落

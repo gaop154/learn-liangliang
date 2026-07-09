@@ -54,14 +54,99 @@
 - **index.html**：网站首页
 - 其他辅助脚本和配置文件
 
-## 4. 免责声明 ⚠️
+## 4. Docker 部署 🚀
+
+第一版部署使用 Docker Compose 编排：
+
+- `gateway`：Caddy 入口，对外暴露 80 端口。
+- `web`：Nginx 静态站点，托管现有 HTML、PDF、图片和前端脚本。
+- `api`：Go 后端 API，提供登录和阅读进度同步。
+- `db`：PostgreSQL，使用 `postgres_data` volume 持久化数据。
+
+### 4.1 CentOS 安装 Docker
+
+```bash
+sudo yum install -y yum-utils
+sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+sudo yum install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo systemctl enable docker
+sudo systemctl start docker
+```
+
+放行端口：
+
+```bash
+sudo firewall-cmd --add-service=http --permanent
+sudo firewall-cmd --add-service=https --permanent
+sudo firewall-cmd --reload
+```
+
+云服务器安全组也需要放行 80/443。生产环境建议使用域名访问，Caddy 会自动申请 HTTPS 证书。
+
+### 4.2 配置环境变量
+
+```bash
+cp .env.example .env
+```
+
+然后编辑 `.env`，至少替换：
+
+- `SITE_DOMAIN`
+- `ACME_EMAIL`
+- `POSTGRES_PASSWORD`
+- `DATABASE_URL` 中的密码
+- `ADMIN_USERNAME`
+- `ADMIN_PASSWORD`
+
+生产环境保持 `APP_COOKIE_SECURE=true`；只有本地 HTTP 调试时才临时改为 `false`。
+
+### 4.3 启动
+
+```bash
+docker compose up -d --build
+```
+
+查看状态：
+
+```bash
+docker compose ps
+docker compose logs -f api
+```
+
+浏览器访问：
+
+```text
+https://你的域名
+```
+
+登录入口：
+
+```text
+https://你的域名/login.html
+```
+
+阅读记录入口：
+
+```text
+https://你的域名/reading-history.html
+```
+
+### 4.4 PostgreSQL 备份
+
+```bash
+docker compose exec db sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > backup.sql
+```
+
+只要不删除 `postgres_data` volume，重建 `web` / `api` 容器不会丢失阅读记录。
+
+## 5. 免责声明 ⚠️
 
 本项目仅用于技术学习与资料备份，所有内容版权归原作者所有，未经许可，请勿用于商业用途。
 
-## 5. 相关信息
+## 6. 相关信息
 
 [![Star History Chart](https://api.star-history.com/svg?repos=xixiwenxuanhe/learn-liangliang&type=Date)](https://www.star-history.com/#xixiwenxuanhe/learn-liangliang&Date)
 
-## 6. 许可证 📝
+## 7. 许可证 📝
 
 本项目采用 MIT License 开源，详见 [LICENSE](./LICENSE) 文件。

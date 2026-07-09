@@ -1,4 +1,6 @@
 **/__pycache__/**
 
 ssl/
+.env
+backend/bin/
 

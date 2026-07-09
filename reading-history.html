@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>阅读记录 - learn-liangliang</title>
+<link rel="stylesheet" href="/static/index.css" />
+</head>
+<body>
+<div class="reading-page">
+  <div class="reading-card reading-card-wide">
+    <h1>阅读记录</h1>
+    <p class="reading-muted">这里展示当前账号最近阅读过的文章和进度。</p>
+    <div id="history-list">正在加载...</div>
+    <p><a href="/">返回首页</a></p>
+  </div>
+</div>
+<script>
+(function () {
+  var list = document.getElementById('history-list');
+  function escapeHtml(text) {
+    return String(text).replace(/[&<>'"]/g, function (ch) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[ch];
+    });
+  }
+  function safePath(path) {
+    if (!path || !path.startsWith('/') || path.startsWith('//')) {
+      return '/';
+    }
+    return path;
+  }
+  function articleHref(path) {
+    try {
+      return new URL(safePath(path), window.location.origin).pathname;
+    } catch (e) {
+      return '/';
+    }
+  }
+  function jsonFetch(url, options) {
+    return fetch(url, options).then(function (resp) {
+      return resp.json().catch(function () { return {}; }).then(function (data) {
+        if (!resp.ok) {
+          var msg = data && data.error && data.error.message ? data.error.message : '请求失败';
+          throw new Error(msg);
+        }
+        return data;
+      });
+    });
+  }
+  function load() {
+    jsonFetch('/api/auth/me', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+      .then(function (resp) { return resp.json(); })
+      .then(function (me) {
+        if (!me.authenticated) {
+          window.location.href = '/login.html?next=' + encodeURIComponent('/reading-history.html');
+          return;
+        }
+        return jsonFetch('/api/reading-progress/recent?limit=100', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } });
+      })
+      .then(function (data) {
+        if (!data) return;
+        var items = data.items || [];
+        if (!items.length) {
+          list.innerHTML = '<p class="reading-muted">暂无阅读记录。</p>';
+          return;
+        }
+        list.innerHTML = items.map(function (item) {
+          return '<div class="reading-history-item">' +
+            '<a href="' + escapeHtml(articleHref(item.articlePath)) + '">' + escapeHtml(item.articleTitle) + '</a>' +
+            '<div class="reading-history-meta">进度 ' + item.progressPercent + '% · ' + new Date(item.lastReadAt).toLocaleString() + '</div>' +
+            '<div class="reading-history-bar"><span style="width:' + item.progressPercent + '%"></span></div>' +
+          '</div>';
+        }).join('');
+      })
+      .catch(function (err) {
+        list.textContent = err.message || '加载失败';
+      });
+  }
+  load();
+})();
+</script>
+</body>
+</html>

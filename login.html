@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>登录 - learn-liangliang</title>
+<link rel="stylesheet" href="/static/index.css" />
+</head>
+<body>
+<div class="reading-page">
+  <div class="reading-card">
+    <h1>登录</h1>
+    <p class="reading-muted">登录后可以跨设备同步文章阅读进度。</p>
+    <form id="login-form">
+      <label>用户名</label>
+      <input id="username" name="username" autocomplete="username" required />
+      <label>密码</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required />
+      <button type="submit">登录</button>
+      <p id="login-message" class="reading-message"></p>
+    </form>
+    <p><a href="/">返回首页</a></p>
+  </div>
+</div>
+<script>
+(function () {
+  var form = document.getElementById('login-form');
+  var message = document.getElementById('login-message');
+  form.addEventListener('submit', function (event) {
+    event.preventDefault();
+    message.textContent = '正在登录...';
+    fetch('/api/auth/login', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({
+        username: document.getElementById('username').value,
+        password: document.getElementById('password').value
+      })
+    }).then(function (resp) {
+      return resp.json().catch(function () { return {}; }).then(function (data) {
+        if (!resp.ok) {
+          var msg = data && data.error && data.error.message ? data.error.message : '登录失败';
+          throw new Error(msg);
+        }
+        return data;
+      });
+    }).then(function () {
+      message.textContent = '登录成功，正在返回...';
+      var next = new URLSearchParams(window.location.search).get('next') || '/';
+      if (!next.startsWith('/') || next.startsWith('//')) {
+        next = '/';
+      }
+      window.location.href = next;
+    }).catch(function (err) {
+      message.textContent = err.message;
+    });
+  });
+})();
+</script>
+</body>
+</html>

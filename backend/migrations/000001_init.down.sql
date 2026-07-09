@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS reading_progress;
+DROP TABLE IF EXISTS sessions;
+DROP TABLE IF EXISTS users;
