@@ -3,4 +3,6 @@
 ssl/
 .env
 backend/bin/
+backend/config.yaml
+Caddyfile.local
 

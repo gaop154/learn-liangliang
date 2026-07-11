@@ -6,6 +6,8 @@
         user: null,
         lastSavedAt: 0,
         lastSavedProgress: -1,
+        highestProgress: -1,
+        highestScrollY: 0,
         saveTimer: null,
         restoring: false
     };
@@ -86,13 +88,24 @@
         var total = height - viewport;
         var progress = total <= 0 ? 100 : Math.round((scrollY / total) * 100);
         progress = Math.max(0, Math.min(100, progress));
+        scrollY = Math.round(scrollY);
         return {
             articlePath: getArticlePath(),
             articleTitle: getArticleTitle(),
             progressPercent: progress,
-            scrollY: Math.round(scrollY),
+            scrollY: scrollY,
             finished: progress >= 95
         };
+    }
+
+    function mergeHighestProgress(payload) {
+        var merged = Object.assign({}, payload);
+        state.highestProgress = Math.max(state.highestProgress, merged.progressPercent);
+        state.highestScrollY = Math.max(state.highestScrollY, merged.scrollY);
+        merged.progressPercent = state.highestProgress;
+        merged.scrollY = state.highestScrollY;
+        merged.finished = merged.finished || merged.progressPercent >= 95;
+        return merged;
     }
 
     function buildPanel() {
@@ -153,11 +166,16 @@
 
     function maybeRestore() {
         if (!state.user || !isArticlePage()) {
-            return;
+            return Promise.resolve();
         }
         var articlePath = encodeURIComponent(getArticlePath());
-        request('/reading-progress?articlePath=' + articlePath).then(function (data) {
-            if (!data.found || !data.item || !data.item.scrollY || data.item.progressPercent <= 0) {
+        return request('/reading-progress?articlePath=' + articlePath).then(function (data) {
+            if (!data.found || !data.item) {
+                return;
+            }
+            state.highestProgress = Math.max(state.highestProgress, data.item.progressPercent || 0);
+            state.highestScrollY = Math.max(state.highestScrollY, data.item.scrollY || 0);
+            if (!data.item.scrollY || data.item.progressPercent <= 0) {
                 return;
             }
             showRestoreTip(data.item);
@@ -204,17 +222,17 @@
             return;
         }
         var now = Date.now();
-        var payload = getProgress();
+        var payload = mergeHighestProgress(getProgress());
         if (!force) {
             if (now - state.lastSavedAt < SAVE_INTERVAL_MS) {
                 return;
             }
-            if (Math.abs(payload.progressPercent - state.lastSavedProgress) < MIN_PROGRESS_DELTA) {
+            if (payload.progressPercent - state.lastSavedProgress < MIN_PROGRESS_DELTA) {
                 return;
             }
         }
         state.lastSavedAt = now;
-        state.lastSavedProgress = payload.progressPercent;
+        state.lastSavedProgress = Math.max(state.lastSavedProgress, payload.progressPercent);
         request('/reading-progress', {
             method: 'PUT',
             keepalive: force,
@@ -225,7 +243,8 @@
     ready(function () {
         buildPanel();
         loadCurrentUser().then(function () {
-            maybeRestore();
+            return maybeRestore();
+        }).then(function () {
             if (state.user && isArticlePage()) {
                 scheduleSave(true);
                 window.addEventListener('scroll', function () { scheduleSave(false); }, { passive: true });

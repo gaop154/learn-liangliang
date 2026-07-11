@@ -12,36 +12,6 @@
 
 ## 2. 网站内容介绍 📝
 
-**首页 🏠：聚合导航，快速访问各类技术内容。**
-<p align="center">
-  <img src="img/index.png" />
-</p>
-
-**专栏 📖：收录数十个高质量技术专栏，涵盖后端、分布式、架构、前端、AI 等方向。**
-<p align="center">
-  <img src="img/专栏.png" />
-</p>
-
-**文章 📰：精选技术文章，内容包括数据库、微服务、缓存、面试、架构等实战与理论。**
-<p align="center">
-  <img src="img/文章.png" />
-</p>
-
-**极客时间 ⏰：极客时间等平台的部分优质专栏归档，便于系统性学习。**
-<p align="center">
-  <img src="img/极客时间.png" />
-</p>
-
-**PDF 📄：部分资料以 PDF 形式归档，方便离线阅读。**
-<p align="center">
-  <img src="img/PDF.png" />
-</p>
-
-**恋爱必修课 💌：非技术类专栏归档。**
-<p align="center">
-  <img src="img/恋爱必修课.png" />
-</p>
-
 ## 3. 项目目录说明 🗃️
 
 - **content/**：文章相关归档内容根目录，内部保留原有公开路径层级。
@@ -157,7 +127,151 @@ docker compose down
 docker compose down -v
 ```
 
-### 4.2 CentOS 安装 Docker
+### 4.2 本地非 Docker 启动
+
+如果不想使用 Docker，也可以在本机直接启动 PostgreSQL、Go API 和 Caddy。这个方式适合开发调试，但需要自己安装和管理本机服务。
+
+需要先安装：
+
+- Go 1.23+
+- PostgreSQL 16+
+- Caddy 2+
+
+Windows 推荐通过 PowerShell 安装 Caddy：
+
+```powershell
+winget install CaddyServer.Caddy
+```
+
+安装完成后新开一个 PowerShell，并确认：
+
+```powershell
+caddy version
+```
+
+如果系统没有 `winget`，可以从 [Caddy 下载页](https://caddyserver.com/download) 下载 Windows ZIP 包，将 `caddy.exe` 所在目录加入 `Path`，或在该目录直接执行 `caddy.exe`。
+
+本地非 Docker 模式的端口分工：
+
+| 服务 | 端口 | 职责 |
+| --- | --- | --- |
+| PostgreSQL | `5432` 或本机实际端口 | 数据库 |
+| Go API | `8080` | 登录、会话、阅读进度 API |
+| Caddy | `8081` | 浏览器访问入口、静态文件服务、`/api/*` 反向代理 |
+
+浏览器应访问 Caddy 的 `http://localhost:8081/`，不要直接访问 Go API 的 `http://localhost:8080/`；Go API 只提供 `/api/*` 接口，访问其首页会返回 404。
+
+1. 创建本地数据库和账号：
+
+```bash
+psql -U postgres
+```
+
+在 `psql` 中执行：
+
+```sql
+CREATE USER learn WITH PASSWORD 'local_dev_password_123';
+CREATE DATABASE learn_liangliang OWNER learn;
+\q
+```
+
+2. 准备 Go API 本地配置并启动后端。
+
+Docker / 生产部署继续使用项目根目录 `.env` 注入环境变量；本地非 Docker 调试推荐使用 `backend/config.yaml`，避免每次手动导出多项环境变量。环境变量优先级始终最高，可用于临时覆盖 `config.yaml` 中的配置。
+
+Git Bash / Linux / macOS：
+
+```bash
+cd backend
+cp config.example.yaml config.yaml
+# 按本机 PostgreSQL 账号、密码和端口编辑 config.yaml
+go run ./cmd/api
+```
+
+Windows PowerShell：
+
+```powershell
+cd backend
+Copy-Item config.example.yaml config.yaml
+# 按本机 PostgreSQL 账号、密码和端口编辑 config.yaml
+go run ./cmd/api
+```
+
+如需指定其他配置文件路径，可以设置可选环境变量 `APP_CONFIG_FILE`：
+
+```bash
+APP_CONFIG_FILE=/path/to/config.yaml go run ./cmd/api
+```
+
+也可以继续完全使用环境变量启动，或只覆盖其中少数字段。例如本地 HTTP 调试可临时覆盖 Cookie Secure：
+
+```bash
+APP_COOKIE_SECURE=false go run ./cmd/api
+```
+
+后端启动后会自动执行数据库迁移，并创建或更新管理员账号。
+
+3. 新开一个终端，在项目根目录创建本地 Caddy 配置文件，例如 `Caddyfile.local`：
+
+```caddyfile
+:8081 {
+    encode gzip
+    root * .
+
+    handle /api/* {
+        reverse_proxy 127.0.0.1:8080
+    }
+
+    @blocked path /.git* /.claude* /.trellis* /backend* /deploy* /utils* /content* /docker-compose.yml /requirements.txt /README.md /.env*
+    respond @blocked 403
+
+    try_files {path} {path}/ /content{path} /content{path}/index.html /content{path}/
+    file_server
+}
+```
+
+4. 启动本地静态站点网关：
+
+```bash
+caddy run --config Caddyfile.local
+```
+
+Windows PowerShell 同样执行：
+
+```powershell
+caddy run --config Caddyfile.local
+```
+
+Caddy 会持续运行，请保持此终端窗口打开。
+
+5. 浏览器访问：
+
+```text
+http://localhost:8081/
+```
+
+登录入口：
+
+```text
+http://localhost:8081/login.html
+```
+
+阅读记录入口：
+
+```text
+http://localhost:8081/reading-history.html
+```
+
+注意：
+
+- 非 Docker 模式下 Go API 不会自动读取项目根目录 `.env` 文件；推荐使用 `backend/config.yaml`，或通过环境变量覆盖配置。
+- 本地 HTTP 调试必须设置 `app.cookieSecure: false`，或用环境变量 `APP_COOKIE_SECURE=false` 覆盖。
+- `backend/config.yaml` 只用于本地私有配置，已被 `.gitignore` 忽略，不要提交真实密码。
+- `Caddyfile.local` 只是本地临时配置，不建议提交到仓库。
+- 如果本机 PostgreSQL 端口、账号或密码不同，请同步修改 `backend/config.yaml` 中的 `databaseUrl`。
+- 停止 Go API 或 Caddy 时，在各自终端按 `Ctrl + C`。
+
+### 4.3 CentOS 安装 Docker
 
 ```bash
 sudo yum install -y yum-utils
@@ -177,7 +291,7 @@ sudo firewall-cmd --reload
 
 云服务器安全组也需要放行 80/443。生产环境建议使用域名访问，Caddy 会自动申请 HTTPS 证书。
 
-### 4.3 配置环境变量
+### 4.4 配置环境变量
 
 ```bash
 cp .env.example .env
@@ -194,7 +308,7 @@ cp .env.example .env
 
 生产环境保持 `APP_COOKIE_SECURE=true`；只有本地 HTTP 调试时才临时改为 `false`。
 
-### 4.4 生产启动
+### 4.5 生产启动
 
 ```bash
 docker compose up -d --build
@@ -225,7 +339,7 @@ https://你的域名/login.html
 https://你的域名/reading-history.html
 ```
 
-### 4.5 PostgreSQL 备份
+### 4.6 PostgreSQL 备份
 
 ```bash
 docker compose exec db sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > backup.sql
