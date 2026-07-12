@@ -9,9 +9,9 @@
 当前持久化方式：
 
 - PostgreSQL：用户、会话和阅读进度数据，由 `db` 容器和 `postgres_data` volume 持久化。
-- 页面内容：`index.html`、`content/专栏/**/*.md.html`、`content/文章/**/*.md.html`、`content/极客时间/**/*.md.html`、`content/恋爱必修课/**/*.md.html`。
-- PDF 内容：`content/PDF/*.pdf` 和 `content/PDF/index.html`。
-- 静态资源：`static/`、`content/assets/`、`img/`、`live-2d/`。
+- 页面内容：`index.html`、`content/专栏/**/*.md.html`、`content/其他/{恋爱必修课,文章,极客时间}/**/*.md.html`。
+- PDF 内容：`content/其他/PDF/*.pdf` 和 `content/其他/PDF/index.html`。
+- 静态资源：`static/`、各课程或分类目录内的 `assets/`、`img/`、`live-2d/`。
 - 脚本批处理状态：`utils/task.json`。
 - 部署配置：`docker-compose.yml`、`deploy/caddy/Caddyfile`、`deploy/nginx/default.conf`、`backend/Dockerfile`。
 - Python 工具脚本依赖：`requirements.txt` 仅包含 `requests`、`beautifulsoup4` 等离线脚本依赖。
@@ -88,7 +88,7 @@ Go API 通过 `pgx` 和 `sqlc` 访问数据库：
 - 处理器不应手写复杂 SQL 或绕过已有 DB 封装。
 - 跨接口共享的数据格式应由 Go 类型、SQL 约束和前端脚本共同遵守，不要各自定义一套字段名。
 
-阅读进度按 `(user_id, article_path)` upsert。`article_path` 必须是公开 canonical URL，例如 `/文章/A.md.html`，不能保存 `/content/文章/A.md.html`。
+阅读进度按 `(user_id, article_path)` upsert。`article_path` 必须是公开 canonical URL，例如 `/其他/文章/A.md.html`，不能保存 `/content/其他/文章/A.md.html`。
 
 ### Nginx 静态文件读取
 
@@ -182,10 +182,10 @@ os.makedirs(os.path.dirname(local_path), exist_ok=True)
 
 涉及内容结构变更时，实际“迁移”是对仓库文件进行批量转换或修补，例如：
 
-- `utils/03_patch_donation_md_links.py` 下载并修补捐赠页及其资源路径。
 - `utils/03_patch_others.py` 将远端 `.md` 内容保存为本地 `.md.html`，并把 HTML 中的 `.md` 链接替换为 `.md.html`。
-- `utils/04_patch_pdf.py` 下载 `content/PDF/index.html` 中引用的 PDF。
-- `utils/migrate_content_root.py` 将旧根目录内容迁移到 `content/` 物理根，并保持公开 URL 不变。
+- `utils/04_patch_pdf.py` 下载 `content/其他/PDF/index.html` 中引用的 PDF。
+- `utils/migrate_content_root.py` 将旧根目录内容迁移到 `content/` 物理根。
+- `utils/05_migrate_other_content.py` 将三类非课程文章和 PDF 迁移到 `content/其他/`，改写绝对站内链接、重建导航并清理捐赠功能。
 
 若未来需要批量改写归档文件，应新增或修改 `utils/` 下的脚本，并在运行前说明会影响哪些目录。不要为内容文件迁移引入 Java Mapper/XML 体系。
 
@@ -217,9 +217,10 @@ os.makedirs(os.path.dirname(local_path), exist_ok=True)
 
 ### 3. Contracts
 
-- `/content/文章/Java.md.html` 必须规范化为 `/文章/Java.md.html`。
+- `/content/其他/文章/Java.md.html` 必须规范化为 `/其他/文章/Java.md.html`。
 - `/content/专栏/x/index.html` 必须规范化为 `/专栏/x/index.html`。
 - `articlePath` 必须以 `/` 开头，不能是 `/`，不能包含路径穿越段 `..`，长度不超过 1024。
+- 仅 canonical 后以 `.md.html` 结尾的路径可读写单篇进度；目录、分类页和静态资源路径必须被 API 拒绝。
 - 阅读历史页生成链接时同样输出公开 canonical URL，不输出 `/content/...`。
 
 ### 4. Validation & Error Matrix
@@ -231,9 +232,9 @@ os.makedirs(os.path.dirname(local_path), exist_ok=True)
 
 ### 5. Good/Base/Bad Cases
 
-- Good：用户访问 `/文章/A.md.html`，数据库保存 `/文章/A.md.html`。
-- Base：手工访问 `/content/文章/A.md.html`，数据库仍保存 `/文章/A.md.html`。
-- Bad：同一篇文章分别保存 `/content/文章/A.md.html` 和 `/文章/A.md.html` 两条记录。
+- Good：用户访问 `/其他/文章/A.md.html`，数据库保存 `/其他/文章/A.md.html`。
+- Base：手工访问 `/content/其他/文章/A.md.html`，数据库仍保存 `/其他/文章/A.md.html`。
+- Bad：同一篇文章分别保存 `/content/其他/文章/A.md.html` 和 `/其他/文章/A.md.html` 两条记录。
 
 ### 6. Tests Required
 
@@ -242,7 +243,15 @@ os.makedirs(os.path.dirname(local_path), exist_ok=True)
 - 手动或自动检查保存请求 payload：访问旧 URL 时 `articlePath` 是旧公开路径。
 - 手动访问 `/content/...` 时，保存和阅读历史链接仍归一到旧公开路径。
 
-### 7. Wrong vs Correct
+### 7. Course Progress Batch Contracts
+
+- `POST /api/reading-progress/batch` 接收 1 至 500 条、去重后的 `.md.html` canonical `articlePaths`，只返回当前用户已有记录；前端以请求集合而非数据库前缀统计课程进度。
+- `POST /api/reading-progress/course-resumes` 接收 1 至 500 条、去重后的 `/专栏/<单段课程名>` canonical `coursePaths`，每门课程按 `last_read_at DESC` 返回最近的 `.md.html` 文章记录。
+- 已登录用户进入 `/专栏/<课程名>/` 时，前端必须先用单元素 `course-resumes` 请求检查最近文章；返回同课程的合法 `.md.html` 时立即 `location.replace`，仅无记录时再请求 `batch` 并渲染目录进度。`/专栏/` 上的点击拦截仅可作为优化，不能替代目录加载时的检查。
+- 课程查询必须使用参数化集合和目录边界匹配，禁止将课程名拼接到 `LIKE` 模式，避免 `%`、`_` 扩大匹配范围。
+- `finished=true` 仅允许 `progressPercent=100`；95 至 99 的文章仍是未完成。
+
+### 8. Wrong vs Correct
 
 #### Wrong
 

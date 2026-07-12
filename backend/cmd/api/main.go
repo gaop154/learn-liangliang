@@ -103,6 +103,10 @@ func buildRouter(store *db.Store, cfg config.Config) http.Handler {
 		r.Use(authHandler.RequireAuth)
 		r.Put("/api/reading-progress", readingHandler.Upsert)
 		r.Get("/api/reading-progress", readingHandler.Get)
+		r.Post("/api/reading-progress/batch", readingHandler.Batch)
+		r.Post("/api/reading-progress/course-resumes", readingHandler.CourseResumes)
+		r.Get("/api/reading-progress/courses", readingHandler.CourseSummaries)
+		r.Get("/api/reading-progress/course", readingHandler.CourseDetail)
 		r.Get("/api/reading-progress/recent", readingHandler.Recent)
 	})
 

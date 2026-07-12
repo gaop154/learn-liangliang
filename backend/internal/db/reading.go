@@ -10,18 +10,7 @@ import (
 )
 
 func (s *Store) UpsertReadingProgress(ctx context.Context, userID int64, articlePath string, articleTitle string, progressPercent int, scrollY int, finished bool) (ReadingProgress, error) {
-	progress, err := s.Queries.UpsertReadingProgress(ctx, sqlc.UpsertReadingProgressParams{
-		UserID:          userID,
-		ArticlePath:     articlePath,
-		ArticleTitle:    articleTitle,
-		ProgressPercent: int32(progressPercent),
-		ScrollY:         int32(scrollY),
-		Finished:        finished,
-	})
-	if err != nil {
-		return ReadingProgress{}, err
-	}
-	return toReadingProgress(progress), nil
+	return s.UpsertActiveReadingProgress(ctx, userID, articlePath, articleTitle, progressPercent, scrollY, finished)
 }
 
 func (s *Store) GetReadingProgress(ctx context.Context, userID int64, articlePath string) (ReadingProgress, error) {
@@ -33,6 +22,55 @@ func (s *Store) GetReadingProgress(ctx context.Context, userID int64, articlePat
 		return ReadingProgress{}, err
 	}
 	return toReadingProgress(progress), nil
+}
+
+func (s *Store) ListReadingProgressByArticlePaths(ctx context.Context, userID int64, articlePaths []string) ([]ReadingProgress, error) {
+	items, err := s.Queries.ListReadingProgressByArticlePaths(ctx, sqlc.ListReadingProgressByArticlePathsParams{
+		UserID:       userID,
+		ArticlePaths: articlePaths,
+	})
+	if err != nil {
+		return nil, err
+	}
+	progresses := make([]ReadingProgress, 0, len(items))
+	for _, item := range items {
+		progresses = append(progresses, toReadingProgress(item))
+	}
+	return progresses, nil
+}
+
+type CourseResume struct {
+	CoursePath string `json:"coursePath"`
+	ReadingProgress
+}
+
+func (s *Store) ListLatestReadingProgressByCoursePaths(ctx context.Context, userID int64, coursePaths []string) ([]CourseResume, error) {
+	items, err := s.Queries.ListLatestReadingProgressByCoursePaths(ctx, sqlc.ListLatestReadingProgressByCoursePathsParams{
+		UserID:      userID,
+		CoursePaths: coursePaths,
+	})
+	if err != nil {
+		return nil, err
+	}
+	resumes := make([]CourseResume, 0, len(items))
+	for _, item := range items {
+		resumes = append(resumes, CourseResume{
+			CoursePath: item.CoursePath,
+			ReadingProgress: ReadingProgress{
+				ID:              item.ID,
+				UserID:          item.UserID,
+				ArticlePath:     item.ArticlePath,
+				ArticleTitle:    item.ArticleTitle,
+				ProgressPercent: int(item.ProgressPercent),
+				ScrollY:         int(item.ScrollY),
+				Finished:        item.Finished,
+				LastReadAt:      item.LastReadAt.Time,
+				CreatedAt:       item.CreatedAt.Time,
+				UpdatedAt:       item.UpdatedAt.Time,
+			},
+		})
+	}
+	return resumes, nil
 }
 
 func (s *Store) ListRecentReadingProgress(ctx context.Context, userID int64, limit int32) ([]ReadingProgress, error) {

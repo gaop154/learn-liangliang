@@ -49,6 +49,21 @@ services:
       - postgres_data:/var/lib/postgresql/data
     <<: *defaults
 
+  content-sync:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    profiles:
+      - tools
+    env_file:
+      - .env
+    depends_on:
+      - db
+    volumes:
+      - ./content:/content:ro
+    command: ["/app/content-sync", "--content-root", "/content"]
+    restart: "no"
+
 volumes:
   postgres_data:
   caddy_data:

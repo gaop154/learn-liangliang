@@ -18,6 +18,9 @@ import argparse
 '''
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 content_dir = os.path.join(base_dir, "content")
+other_content_dir = os.path.join(content_dir, "其他")
+OTHER_COLUMNS = {"恋爱必修课", "文章", "极客时间"}
+OTHER_URL_PATTERN = re.compile(r"/(恋爱必修课|文章|极客时间)(?=(?:/|[?#'\"<>)\s]|$))")
 
 
 base_url = "https://learn.lianglianglee.com"
@@ -29,14 +32,20 @@ def get_links():
     with open(index_path, "r", encoding="utf-8") as f:
         html = f.read()
     soup = BeautifulSoup(html, "html.parser")
-    # 只提取class包含menu-item且href以.md.html结尾的a标签
+    # “其他”分类的侧栏只保留一级导航，文章集合必须以索引正文 DOM 为准。
+    if column_name in OTHER_COLUMNS:
+        scope = soup.select_one(".book-post")
+        candidates = scope.find_all("a", href=True) if scope else []
+    else:
+        candidates = soup.find_all("a", href=True, class_=True)
     links = []
-    for a in soup.find_all("a", href=True, class_=True):
-        if "menu-item" in a.get("class", []):
-            href = a["href"]
-            if href.endswith(".md.html"):
-                links.append(href)
-    return links
+    for a in candidates:
+        if column_name not in OTHER_COLUMNS and "menu-item" not in a.get("class", []):
+            continue
+        href = a["href"]
+        if href.endswith(".md.html"):
+            links.append(href)
+    return list(dict.fromkeys(links))
 
 def download_static_resources(html, base_url, html_file_dir, proxies, content_dir):
     soup = BeautifulSoup(html, "html.parser")
@@ -46,7 +55,11 @@ def download_static_resources(html, base_url, html_file_dir, proxies, content_di
         if img:
             src = img["src"]
             if src.startswith("assets/"):
-                full_url = f"{base_url}/{column_rel_path}/{src}"
+                # 本地物理路径新增“其他”层，远端归档源仍沿用旧分类 URL。
+                remote_column_rel_path = column_rel_path.replace("\\", "/")
+                if remote_column_rel_path.startswith("其他/"):
+                    remote_column_rel_path = remote_column_rel_path[len("其他/"):]
+                full_url = f"{base_url}/{remote_column_rel_path}/{src}"
                 local_path = os.path.join(html_file_dir, src)
                 os.makedirs(os.path.dirname(local_path), exist_ok=True)
                 if os.path.exists(local_path):
@@ -88,10 +101,12 @@ def main():
         print(f"进度: {idx}/{total} (当前代理: {username})")
         # 下载.md，保存为.md.html
         url_path = unquote(href)
-        if url_path.endswith('.md.html'):
-            md_url_path = url_path[:-5]  # 去掉.html
+        # 新本地索引使用 /其他/<分类>/；远端抓取源仍使用历史公开分类路径。
+        remote_url_path = OTHER_URL_PATTERN.sub(r"/\1", url_path)
+        if remote_url_path.endswith('.md.html'):
+            md_url_path = remote_url_path[:-5]  # 去掉.html
         else:
-            md_url_path = url_path
+            md_url_path = remote_url_path
         url = urljoin(base_url, md_url_path)
         filename = os.path.basename(url_path)
         save_path = os.path.join(column_dir, filename)
@@ -144,8 +159,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
     column_name = args.column
     global index_path, column_dir
-    index_path = os.path.join(content_dir, column_name, "index.html")
-    column_dir = os.path.join(content_dir, column_name)
+    # 三个非课程分类统一落在 content/其他；专栏课程仍保留原目录结构。
+    if column_name in OTHER_COLUMNS:
+        column_dir = os.path.join(other_content_dir, column_name)
+    else:
+        column_dir = os.path.join(content_dir, column_name)
+    index_path = os.path.join(column_dir, "index.html")
     main()
 
 

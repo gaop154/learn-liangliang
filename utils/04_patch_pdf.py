@@ -8,8 +8,8 @@ from proxy_pool import proxy_accounts
 
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 content_dir = os.path.join(base_dir, "content")
-index_path = os.path.join(content_dir, "PDF", "index.html")
-pdf_dir = os.path.join(content_dir, "PDF")
+pdf_dir = os.path.join(content_dir, "其他", "PDF")
+index_path = os.path.join(pdf_dir, "index.html")
 base_url = "https://learn.lianglianglee.com"
 headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
@@ -47,7 +47,9 @@ def main():
             "https": proxy_url,
         }
         print(f"进度: {idx}/{total} (当前代理: {username})")
-        url = urljoin(base_url, href)
+        # 本地索引迁入 /其他/PDF，远端归档源仍使用历史 /PDF 路径。
+        remote_href = href.replace("/其他/PDF", "/PDF", 1)
+        url = urljoin(base_url, remote_href)
         filename = os.path.basename(unquote(href))
         save_path = os.path.join(pdf_dir, filename)
         if os.path.exists(save_path):

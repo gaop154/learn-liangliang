@@ -8,6 +8,35 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type ContentItem struct {
+	ID          int64
+	PublicPath  string
+	Title       string
+	ContentType string
+	IsActive    bool
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+}
+
+type Course struct {
+	ID           int64
+	PublicPath   string
+	Title        string
+	ArticleCount int32
+	IsActive     bool
+	CreatedAt    pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
+}
+
+type CourseArticle struct {
+	CourseID      int64
+	ContentItemID int64
+	Position      int32
+	IsActive      bool
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+}
+
 type ReadingProgress struct {
 	ID              int64
 	UserID          int64
@@ -38,4 +67,15 @@ type User struct {
 	IsActive     bool
 	CreatedAt    pgtype.Timestamptz
 	UpdatedAt    pgtype.Timestamptz
+}
+
+type UserCourseProgress struct {
+	UserID                 int64
+	CourseID               int64
+	LearnedArticleCount    int32
+	AverageProgressPercent int32
+	LatestContentItemID    pgtype.Int8
+	LatestReadAt           pgtype.Timestamptz
+	CreatedAt              pgtype.Timestamptz
+	UpdatedAt              pgtype.Timestamptz
 }

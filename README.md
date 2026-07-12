@@ -14,13 +14,12 @@
 
 ## 3. 项目目录说明 🗃️
 
-- **content/**：文章相关归档内容根目录，内部保留原有公开路径层级。
-  - **content/专栏/**：技术专栏归档
-  - **content/文章/**：精选技术文章归档
-  - **content/极客时间/**：极客时间专栏归档
-  - **content/PDF/**：PDF 资料归档
-  - **content/恋爱必修课/**：非技术类专栏
-  - **content/assets/**：内容页引用的归档资源，例如捐赠页资源
+- **content/**：文章相关归档内容物理根目录。
+  - **content/专栏/**：技术专栏归档，对外路径为 `/专栏/`。
+  - **content/其他/**：非课程分类归档，对外路径为 `/其他/`。
+    - **content/其他/恋爱必修课/**、**content/其他/文章/**、**content/其他/极客时间/**：支持单篇阅读进度。
+    - **content/其他/PDF/**：PDF 资料归档，不记录阅读进度。
+  - 各分类和课程保留各自的 `assets/` 子目录；已清理的捐赠页不再提供入口。
 - **static/**：前端样式、脚本与公共静态资源
 - **img/**：页面截图与图片资源
 - **backend/**：Go API 服务，提供登录、会话和阅读进度同步接口
@@ -28,7 +27,7 @@
 - **deploy/nginx/**：静态站点容器内的 Nginx 配置，负责旧公开 URL 到 `content/` 的内部映射
 - **utils/**：离线内容抓取、修补和迁移脚本；这些脚本可使用 Python 依赖，但不属于生产 Web 运行时
 - **index.html**：网站首页
-- 公开访问 URL 仍保持旧路径，例如 `/专栏/...`、`/文章/...`、`/PDF/...`，不会暴露为 `/content/...`。
+- 公开访问 URL 使用 `/专栏/...` 与 `/其他/...`，不会暴露为 `/content/...`；旧 `/文章/...`、`/极客时间/...`、`/恋爱必修课/...`、`/PDF/...` 路径不再保留静态映射或重定向。
 - 旧 Flask/Gunicorn 运行时已移除，生产部署不再使用 Python 提供 Web 服务。
 
 ## 4. Docker 部署 🚀
@@ -39,6 +38,7 @@
 - `web`：Nginx 静态站点，托管现有 HTML、PDF、图片和前端脚本，并把旧公开 URL 内部映射到 `content/`。
 - `api`：Go 后端 API，提供登录、会话和阅读进度同步。
 - `db`：PostgreSQL，使用 `postgres_data` volume 持久化数据。
+- `content-sync`：按需执行的一次性内容索引服务，仅只读挂载 `content/`，同步完成后自动退出。
 
 ### 4.1 本地启动
 
@@ -346,6 +346,23 @@ docker compose exec db sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > back
 ```
 
 只要不删除 `postgres_data` volume，重建 `web` / `api` 容器不会丢失阅读记录。
+
+### 4.7 同步内容索引
+
+内容目录变更后，执行一次性同步服务以更新活动内容、课程章节及用户课程汇总：
+
+```bash
+docker compose --profile tools run --rm content-sync
+```
+
+本地非 Docker 调试可使用同一 Go 实现：
+
+```bash
+cd backend
+go run ./cmd/content-sync --content-root ../content
+```
+
+`content-sync` 仅以只读方式挂载或读取内容目录；它在事务内协调同步与进度保存，完成后退出，不会常驻或影响 `gateway`、`web`、`api`、`db` 的运行。
 
 ## 5. 免责声明 ⚠️
 

@@ -14,6 +14,7 @@
 - Docker 编排检查：`docker compose config`。
 - 占位符和旧架构检查：确认 `.trellis/spec/backend/*.md` 不再把 Flask/Gunicorn 描述为生产入口。
 - 如修改 Nginx/Caddy 配置，应通过 `docker compose config` 和容器实际访问验证；目标环境有独立 Nginx 时再执行 `nginx -t`。
+- 内容已迁移为 `content/专栏/` 与 `content/其他/{恋爱必修课,文章,极客时间,PDF}/`；公开分类入口是 `/专栏/` 与 `/其他/`。旧 `/文章/`、`/极客时间/`、`/恋爱必修课/`、`/PDF/` 不再保留映射或重定向。
 
 ---
 
@@ -58,8 +59,8 @@ location / {
 HTML、脚本和阅读进度依赖当前公开 URL 形态：
 
 - 首页：`index.html`。
-- 公开分类 URL：`/专栏/`、`/文章/`、`/极客时间/`、`/恋爱必修课/`、`/PDF/`、`/assets/`。
-- 物理内容根：`content/专栏/`、`content/文章/`、`content/极客时间/`、`content/恋爱必修课/`、`content/PDF/`、`content/assets/`。
+- 公开分类 URL：`/专栏/`、`/其他/`、`/其他/恋爱必修课/`、`/其他/文章/`、`/其他/极客时间/`、`/其他/PDF/`。
+- 物理内容根：`content/专栏/`、`content/其他/恋爱必修课/`、`content/其他/文章/`、`content/其他/极客时间/`、`content/其他/PDF/`；各分类或课程的私有资源保留在各自的 `assets/` 子目录。
 - 内容文件：`*.md.html`。
 - 公共静态资源：`static/`、`img/`、`live-2d/`。
 
@@ -148,7 +149,7 @@ PY
 
 - 是否符合当前项目形态：静态站点 + Go API + PostgreSQL + Caddy/Nginx + Python 离线脚本？
 - 是否引用了真实存在的文件路径，例如 `backend/`、`utils/*.py`、`static/index.js`、`static/reading-progress.js`、`docker-compose.yml`、`deploy/caddy/Caddyfile`、`deploy/nginx/default.conf`？
-- 是否保留中文路径、`.md.html` 后缀和现有静态资源目录？
+- 是否保留中文路径、`.md.html` 后缀和现有静态资源目录，并确保其他分类改为 `/其他/...` 公开 URL？
 - 是否避免了不必要的大规模格式化或批量重写归档内容？
 - 如果改动了抓取脚本，是否保留 timeout、重试、跳过已存在文件、中文进度输出？
 - 如果改动了静态站配置，是否保留 403/404 语义、内部目录拒绝和旧 URL 到 `content/` 的映射？

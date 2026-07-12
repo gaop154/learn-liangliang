@@ -28,7 +28,8 @@ learn-liangliang/
 ├── backend/                           # Go API 服务
 │   ├── Dockerfile                     # Go API 多阶段构建镜像
 │   ├── cmd/api/main.go                # API 启动入口
-│   ├── internal/                      # 配置、认证、阅读进度、DB、响应封装
+│   ├── cmd/content-sync/main.go       # 一次性内容目录同步入口
+│   ├── internal/                      # 配置、认证、内容索引、阅读进度、DB、响应封装
 │   ├── migrations/                    # PostgreSQL 迁移脚本
 │   └── sqlc.yaml                      # sqlc 配置
 ├── deploy/
@@ -43,19 +44,19 @@ learn-liangliang/
 ├── img/                               # README 截图、GitHub 图标、分类图片
 ├── live-2d/                           # Live2D 模型和脚本资源
 ├── content/                           # 内容物理根目录，不作为主公开 URL 暴露
-│   ├── PDF/
-│   ├── assets/
 │   ├── 专栏/
-│   ├── 文章/
-│   ├── 极客时间/
-│   └── 恋爱必修课/
+│   └── 其他/
+│       ├── 恋爱必修课/
+│       ├── 文章/
+│       ├── 极客时间/
+│       └── PDF/
 └── utils/                             # 抓取、修补、批处理脚本
     ├── 01_download_index.py
     ├── 02_download_menu_index.py
-    ├── 03_patch_donation_md_links.py
     ├── 03_patch_others.py
     ├── 03_patch_zhuanlan.sh
     ├── 04_patch_pdf.py
+    ├── 05_migrate_other_content.py
     ├── gen_task_json.py
     ├── migrate_content_root.py
     ├── proxy_pool.py
@@ -86,7 +87,7 @@ learn-liangliang/
   - `utils/01_download_index.py`：抓取首页并下载 CSS/图片/JS 到 `static/`。
   - `utils/02_download_menu_index.py`：抓取栏目菜单页。
   - `utils/03_patch_others.py`：按 `--column` 下载栏目中的 `.md` 内容并保存为 `.md.html`。
-  - `utils/04_patch_pdf.py`：从 `content/PDF/index.html` 解析 PDF 链接并下载 PDF。
+  - `utils/04_patch_pdf.py`：从 `content/其他/PDF/index.html` 解析 PDF 链接并下载 PDF。
 - 批处理 Shell 脚本也放在 `utils/`，例如 `utils/03_patch_zhuanlan.sh` 调用 `03_patch_others.py` 并更新 `utils/task.json`。
 - `requirements.txt` 仅为这些离线脚本保留 `requests`、`beautifulsoup4` 等依赖，不应重新加入 Flask/Gunicorn 运行时依赖。
 
@@ -104,7 +105,7 @@ parser.add_argument("--column", type=str, default="恋爱必修课", help="专�
 - 公共脚本和样式放在 `static/`，例如 `static/index.js`、`static/reading-progress.js` 和 `static/index.css`。
 - `static/index.js` 承担站点基础增强职责：记录上次阅读路径、侧边栏交互、GitHub 悬浮入口、Live2D 注入、Giscus 评论区注入、页脚修改。
 - `static/reading-progress.js` 承担读取登录态、查询/上报阅读进度、提示恢复进度等跨设备同步逻辑。
-- `img/` 用于站点截图和图标，`content/assets/` 用于被内容页直接引用的归档资源，`live-2d/` 用于 Live2D 模型资源。
+- `img/` 用于站点截图和图标，各课程或分类内的 `assets/` 用于被内容页直接引用的归档资源，`live-2d/` 用于 Live2D 模型资源。
 
 ### 部署配置
 
@@ -121,13 +122,13 @@ parser.add_argument("--column", type=str, default="恋爱必修课", help="专�
 
 ## 命名约定
 
-- 归档内容目录保留中文名称：`content/专栏/`、`content/文章/`、`content/极客时间/`、`content/恋爱必修课/`，不要为了代码习惯批量改成英文目录。
-- 公开 URL 继续保留旧路径：`/专栏/...`、`/文章/...`、`/极客时间/...`、`/恋爱必修课/...`、`/PDF/...`、`/assets/...`。
+- 归档内容目录保留中文名称：`content/专栏/`、`content/其他/恋爱必修课/`、`content/其他/文章/`、`content/其他/极客时间/`、`content/其他/PDF/`，不要为了代码习惯批量改成英文目录。
+- 公开 URL 使用：`/专栏/...`、`/其他/恋爱必修课/...`、`/其他/文章/...`、`/其他/极客时间/...`、`/其他/PDF/...`；不保留旧分类路径映射。
 - 归档文章文件当前使用 `*.md.html` 后缀，例如 `content/专栏/10x程序员工作法/00 开篇词 程序员解决的问题，大多不是程序问题.md.html`；脚本中也有把 `.md` 替换为 `.md.html` 的逻辑。
-- 工具脚本按执行阶段使用数字前缀：`01_`、`02_`、`03_`、`04_`。
+- 工具脚本按执行阶段使用数字前缀：`01_`、`02_`、`03_`、`04_`、`05_`。
 - Python 变量和函数使用 snake_case，例如 `safe_filename`、`get_links`、`download_static_resources`。
-- Go 包名使用小写短名，按现有 `auth`、`reading`、`config`、`response` 风格组织。
-- 静态文件沿用原站或现有资源命名，例如 `static/highlight.min.js`、`static/email-decode.min.js`、`content/assets/捐赠.md.html`。
+- Go 包名使用小写短名，按现有 `auth`、`catalog`、`reading`、`config`、`response` 风格组织。
+- 静态文件沿用原站或现有资源命名，例如 `static/highlight.min.js`、`static/email-decode.min.js` 与分类内 `assets/` 资源。
 
 ---
 
@@ -158,8 +159,8 @@ parser.add_argument("--column", type=str, default="恋爱必修课", help="专�
 
 ### 3. Contracts
 
-- 物理内容目录只能放在：`content/专栏/`、`content/文章/`、`content/极客时间/`、`content/恋爱必修课/`、`content/PDF/`、`content/assets/`。
-- 公开 URL 必须保持：`/专栏/...`、`/文章/...`、`/极客时间/...`、`/恋爱必修课/...`、`/PDF/...`、`/assets/...`。
+- 物理内容目录只能放在：`content/专栏/` 与 `content/其他/{恋爱必修课,文章,极客时间,PDF}/`；内容私有资源随所属目录保留在 `assets/` 子目录。
+- 公开 URL 必须使用：`/专栏/...` 与 `/其他/{恋爱必修课,文章,极客时间,PDF}/...`。
 - `/content/...` 是物理路径，不作为主公开 URL；Nginx 应拒绝直接暴露。
 - `static/`、`img/`、`live-2d/` 是全站公共资源目录，不迁入 `content/`。
 - 文章内私有图片继续使用同级相对路径 `assets/...`，整体迁移时必须保持页面和同级 `assets/` 的相对关系。
@@ -182,7 +183,7 @@ parser.add_argument("--column", type=str, default="恋爱必修课", help="专�
 - `python utils/migrate_content_root.py --dry-run`：断言只处理白名单内容目录，已迁移时只提示跳过。
 - `python -m py_compile utils/*.py`：断言离线工具脚本语法可加载。
 - `docker compose config`：断言 gateway/web/api/db 编排语法有效。
-- 抽样访问旧 URL：断言 `/文章/index.html`、`/专栏/.../index.html`、`/PDF/index.html`、`/assets/捐赠.md.html` 仍可访问。
+- 抽样访问迁移后 URL：断言 `/其他/文章/index.html`、`/专栏/.../index.html`、`/其他/PDF/index.html` 可访问，旧分类路径不被映射。
 - 静态资源抽样：断言 `/static/index.js`、`/img/github.svg`、`/live-2d/js/live2d.js` 未被 content 映射破坏。
 
 ### 7. Wrong vs Correct
