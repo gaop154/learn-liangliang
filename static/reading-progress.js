@@ -336,6 +336,21 @@
         return map;
     }
 
+    function learningStatusClass(progress) {
+        if (!progress) {
+            return 'learning-status-unstarted';
+        }
+        return progress.progressPercent === 100 ? 'learning-status-completed' : 'learning-status-in-progress';
+    }
+
+    function courseSummaryStatusClass(summary) {
+        var average = Number(summary && summary.averageProgressPercent) || 0;
+        if (average >= 100) {
+            return 'learning-status-completed';
+        }
+        return average > 0 ? 'learning-status-in-progress' : 'learning-status-unstarted';
+    }
+
     function menuStatus(progress) {
         if (!progress) {
             return '未学习';
@@ -357,7 +372,7 @@
                 continue;
             }
             var status = document.createElement('span');
-            status.className = 'course-menu-status';
+            status.className = 'course-menu-status ' + learningStatusClass(records[articlePath]);
             status.textContent = menuStatus(records[articlePath]);
             menuLinks[i].parentNode.appendChild(status);
         }
@@ -420,11 +435,12 @@
         if (!item || item.querySelector('.course-root-summary')) {
             return;
         }
+        var statusClass = courseSummaryStatusClass(summary);
         var details = document.createElement('span');
-        details.className = 'course-root-summary';
+        details.className = 'course-root-summary ' + statusClass;
         details.textContent = courseSummaryText(summary);
         var progress = document.createElement('span');
-        progress.className = 'course-root-progress';
+        progress.className = 'course-root-progress ' + statusClass;
         var filled = document.createElement('span');
         filled.style.width = Math.max(0, Math.min(100, summary.averageProgressPercent || 0)) + '%';
         progress.appendChild(filled);
@@ -585,7 +601,7 @@
                 continue;
             }
             var status = document.createElement('span');
-            status.className = 'other-menu-status';
+            status.className = 'other-menu-status ' + learningStatusClass(records[articlePath]);
             status.textContent = menuStatus(records[articlePath]);
             links[i].parentNode.appendChild(status);
         }

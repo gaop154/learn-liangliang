@@ -946,10 +946,29 @@ img {
     color: #6b4f00;
 }
 
+:root {
+    --learning-status-unstarted-color: #6B7280;
+    --learning-status-in-progress-color: #B45309;
+    --learning-status-completed-color: #15803D;
+    --learning-status-color: var(--learning-status-unstarted-color);
+}
+
+.learning-status-unstarted {
+    --learning-status-color: var(--learning-status-unstarted-color);
+}
+
+.learning-status-in-progress {
+    --learning-status-color: var(--learning-status-in-progress-color);
+}
+
+.learning-status-completed {
+    --learning-status-color: var(--learning-status-completed-color);
+}
+
 .course-chapter-status {
     display: inline-block;
     margin-left: 8px;
-    color: #8a6d1f;
+    color: var(--learning-status-color);
     font-size: 12px;
     white-space: nowrap;
 }
@@ -968,14 +987,14 @@ img {
     display: block;
     height: 100%;
     border-radius: inherit;
-    background: #b8860b;
+    background: var(--learning-status-color);
 }
 
 .course-menu-status {
     display: block;
     margin-top: 2px;
     overflow: hidden;
-    color: #8a6d1f;
+    color: var(--learning-status-color);
     font-size: 10px;
     line-height: 1.2;
     text-overflow: ellipsis;
@@ -985,7 +1004,7 @@ img {
 .course-root-summary {
     display: block;
     margin-top: 3px;
-    color: #8a6d1f;
+    color: var(--learning-status-color);
     font-size: 11px;
     line-height: 1.25;
 }
@@ -1005,7 +1024,7 @@ img {
     display: block;
     height: 100%;
     border-radius: inherit;
-    background: #b8860b;
+    background: var(--learning-status-color);
 }
 
 .other-article-navigation {
@@ -1027,7 +1046,7 @@ img {
     display: block;
     margin-top: 2px;
     overflow: hidden;
-    color: #8a6d1f;
+    color: var(--learning-status-color);
     font-size: 10px;
     line-height: 1.2;
     text-overflow: ellipsis;
