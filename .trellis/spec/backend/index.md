@@ -14,7 +14,7 @@
 - `deploy/nginx/default.conf`：静态站点容器配置，负责旧公开 URL 到 `content/` 的内部映射，并拒绝暴露敏感目录。
 - `docker-compose.yml`：定义 `gateway`、`web`、`api`、`db` 以及持久化 volume。
 - `utils/*.py`：离线抓取首页、栏目、文章、PDF 和修补链接的脚本；不属于生产 Web 运行时。
-- `static/index.js`、`static/reading-progress.js`：站点前端增强脚本，包括阅读进度、侧边栏、GitHub 入口、Live2D、Giscus 评论区等。
+- `static/index.js`、`static/reading-progress.js`：站点前端增强脚本，包括阅读进度、侧边栏、GitHub 入口与 Live2D；不加载第三方评论区或统计脚本。
 
 已移除旧生产入口：`server_flask.py`、根 `Dockerfile`、旧 `learn-liangliang.conf` 和 `restart_nginx.sh` 不再作为运行时契约存在。
 

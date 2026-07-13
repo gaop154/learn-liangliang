@@ -103,7 +103,7 @@ parser.add_argument("--column", type=str, default="恋爱必修课", help="专�
 
 - 站点主页面和内容页是静态 HTML，不使用前端构建工具。
 - 公共脚本和样式放在 `static/`，例如 `static/index.js`、`static/reading-progress.js` 和 `static/index.css`。
-- `static/index.js` 承担站点基础增强职责：记录上次阅读路径、侧边栏交互、GitHub 悬浮入口、Live2D 注入、Giscus 评论区注入、页脚修改。
+- `static/index.js` 承担站点基础增强职责：记录上次阅读路径、侧边栏交互、GitHub 悬浮入口、Live2D 注入、页脚修改；不得注入第三方评论区或统计脚本。
 - `static/reading-progress.js` 承担读取登录态、查询/上报阅读进度、提示恢复进度等跨设备同步逻辑。
 - `img/` 用于站点截图和图标，各课程或分类内的 `assets/` 用于被内容页直接引用的归档资源，`live-2d/` 用于 Live2D 模型资源。
 
