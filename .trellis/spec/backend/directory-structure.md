@@ -9,8 +9,8 @@
 当前仓库的核心内容是已归档的 HTML、PDF、图片和静态资源。生产运行时职责分为四类：
 
 1. Caddy：统一对外入口，`/api/*` 转发到 Go API，其余请求转发到静态站点。
-2. Nginx web 容器：托管静态 HTML/CSS/JS/PDF/图片，并把旧公开 URL 内部映射到 `content/`。
-3. Go API：负责认证、会话和阅读进度同步。
+2. Nginx web 容器：托管静态 HTML/CSS/JS/PDF/图片、把旧公开 URL 内部映射到 `content/`，并通过 `auth_request` 保护内容区域。
+3. Go API：负责认证、会话、Nginx 内部会话校验和阅读进度同步。
 4. PostgreSQL：持久化用户、会话和阅读进度数据。
 
 Python 代码仅保留在 `utils/*.py` 中，承担一次性或批处理抓取、修补归档内容的离线脚本职责，直接读写仓库中的 HTML/PDF/assets 文件。生产 Web 请求链路不再依赖 Python、Flask、Gunicorn 或根目录 Python `Dockerfile`。

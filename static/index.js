@@ -136,33 +136,6 @@ function hide_canvas() {
   }
 })();
 
-// 右下角悬浮Live2D模型
-(function() {
-  // 动态插入 live2d.js 脚本
-  var script = document.createElement('script');
-  script.src = '/live-2d/js/live2d.js';
-  script.onload = function() {
-    // 插入canvas元素
-    var canvas = document.createElement('canvas');
-    canvas.className = 'live2d';
-    canvas.id = 'live2d';
-    canvas.width = 150;
-    canvas.height = 200;
-    document.body.appendChild(canvas);
-
-    // 插入css样式
-    var style = document.createElement('style');
-    style.innerHTML = '.live2d { position: fixed; bottom: 0; right: 0; z-index: 9999; pointer-events: none; }';
-    document.head.appendChild(style);
-
-    // 初始化live2d
-    if (typeof loadlive2d === 'function') {
-      loadlive2d('live2d', '/live-2d/hijiki/hijiki.model.json');
-    }
-  };
-  document.body.appendChild(script);
-})();
-
 // 动态加载阅读进度同步脚本
 (function() {
     var script = document.createElement('script');

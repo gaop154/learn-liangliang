@@ -78,6 +78,9 @@ location / {
 - `/content/...` 不作为主公开 URL 暴露。
 - `backend/`、`deploy/`、`utils/` 等源码和运维目录不能被浏览器直接访问。
 - 中文路径、URL 编码路径和目录 `index.html` 访问必须保持可用。
+- `/专栏/**`、`/其他/**`（包括 PDF 和内容私有资源）与 `/reading-history.html` 必须在静态文件读取前执行 `auth_request /internal/authenticate`；受保护响应必须为 `Cache-Control: private, no-store`，不可被公开资源长缓存规则绕过。
+- 内部认证端点仅接受 Nginx 子请求：有效会话返回无正文 `204`，缺失或失效会话返回无正文 `401`，数据库异常返回无正文 `5xx` 并拒绝访问。仅 Nginx 将 `401` 重定向到登录页；`next` 只能来自 `$uri` pathname，不能使用含查询参数的 `$request_uri`。
+- `/api/reading-progress/**` 的未认证请求仍按 API 契约返回 JSON `401`，不由 Nginx 重定向。
 
 ---
 

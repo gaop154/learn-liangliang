@@ -26,6 +26,21 @@
 (function () {
   var form = document.getElementById('login-form');
   var message = document.getElementById('login-message');
+
+  function safeNextPath(rawNext) {
+    if (!rawNext || rawNext.charAt(0) !== '/' || rawNext.indexOf('//') === 0 || rawNext.indexOf('\\') !== -1) {
+      return '/';
+    }
+    try {
+      var target = new URL(rawNext, window.location.origin);
+      if (target.origin !== window.location.origin || !target.pathname.startsWith('/') || target.pathname.startsWith('//') || target.pathname.indexOf('\\') !== -1) {
+        return '/';
+      }
+      return target.pathname + target.search + target.hash;
+    } catch (e) {
+      return '/';
+    }
+  }
   form.addEventListener('submit', function (event) {
     event.preventDefault();
     message.textContent = '正在登录...';
@@ -47,11 +62,8 @@
       });
     }).then(function () {
       message.textContent = '登录成功，正在返回...';
-      var next = new URLSearchParams(window.location.search).get('next') || '/';
-      if (!next.startsWith('/') || next.startsWith('//')) {
-        next = '/';
-      }
-      window.location.href = next;
+      var next = safeNextPath(new URLSearchParams(window.location.search).get('next'));
+      window.location.assign(next);
     }).catch(function (err) {
       message.textContent = err.message;
     });

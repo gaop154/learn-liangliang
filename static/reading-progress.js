@@ -158,6 +158,17 @@
         return merged;
     }
 
+    function loginPathForCurrentLocation() {
+        var current = window.location.pathname || '/';
+        current += window.location.search || '';
+        current += window.location.hash || '';
+        return '/login.html?next=' + encodeURIComponent(current);
+    }
+
+    function redirectToLogin() {
+        window.location.replace(loginPathForCurrentLocation());
+    }
+
     function buildPanel() {
         if (document.getElementById('reading-progress-panel')) {
             return;
@@ -195,6 +206,7 @@
             logout.style.display = '';
         } else {
             userText.textContent = '未登录';
+            login.href = loginPathForCurrentLocation();
             login.style.display = '';
             history.style.display = 'none';
             logout.style.display = 'none';
@@ -375,7 +387,7 @@
             return;
         }
         if (!state.user) {
-            window.location.replace(articles[0].path);
+            redirectToLogin();
             return;
         }
         requestCourseResumes([coursePath]).then(function (data) {
@@ -525,7 +537,8 @@
             return Promise.reject(new Error('分类中没有文章'));
         }
         if (!state.user) {
-            return Promise.resolve(articles[0].path);
+            redirectToLogin();
+            return Promise.resolve('');
         }
         return requestChapterProgress(articles.map(function (article) { return article.path; })).then(function (data) {
             var latest = latestReadArticle(articles, progressMap(data.items));
@@ -585,7 +598,9 @@
             return;
         }
         resolveOtherCategoryTarget(articles).then(function (target) {
-            window.location.replace(target);
+            if (target) {
+                window.location.replace(target);
+            }
         }).catch(function () {});
     }
 
@@ -628,12 +643,20 @@
                         return;
                     }
                     event.preventDefault();
+                    if (!state.user) {
+                        redirectToLogin();
+                        return;
+                    }
                     fetchOtherCategoryArticles(categoryPath).then(function (articles) {
                         return resolveOtherCategoryTarget(articles);
                     }).then(function (target) {
-                        window.location.assign(target);
+                        if (target) {
+                            window.location.assign(target);
+                        }
                     }).catch(function () {
-                        window.location.assign(categoryPath);
+                        if (state.user) {
+                            window.location.assign(categoryPath);
+                        }
                     });
                 });
             })(links[i]);

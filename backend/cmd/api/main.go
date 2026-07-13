@@ -98,6 +98,9 @@ func buildRouter(store *db.Store, cfg config.Config) http.Handler {
 		r.Get("/me", authHandler.Me)
 		r.Post("/logout", authHandler.Logout)
 	})
+	// 此端点仅供 Nginx auth_request 保护静态内容时调用；置于 /api 外，
+	// 以便认证失败保持为空的 401 响应。
+	r.Get("/internal/authenticate", authHandler.InternalAuthenticate)
 
 	r.Group(func(r chi.Router) {
 		r.Use(authHandler.RequireAuth)

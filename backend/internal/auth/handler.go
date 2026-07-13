@@ -16,8 +16,17 @@ type contextKey string
 
 const userContextKey contextKey = "user"
 
+// Store 定义认证处理器所需的持久化操作，便于在不连接数据库的情况下验证
+// 会话校验异常必须拒绝受保护内容。
+type Store interface {
+	GetUserByUsername(ctx context.Context, username string) (db.User, error)
+	CreateSession(ctx context.Context, userID int64, tokenHash string, expiresAt time.Time) error
+	GetActiveSessionByTokenHash(ctx context.Context, tokenHash string) (db.SessionUser, error)
+	RevokeSession(ctx context.Context, tokenHash string) error
+}
+
 type Handler struct {
-	store *db.Store
+	store Store
 	cfg   config.Config
 }
 
@@ -32,7 +41,7 @@ type loginRequest struct {
 	Password string `json:"password"`
 }
 
-func NewHandler(store *db.Store, cfg config.Config) *Handler {
+func NewHandler(store Store, cfg config.Config) *Handler {
 	return &Handler{store: store, cfg: cfg}
 }
 
@@ -84,6 +93,17 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, map[string]any{"authenticated": true, "user": current})
 }
 
+// InternalAuthenticate 仅供 Nginx auth_request 内部子请求使用。它返回空响应，
+// 由静态网关而非 API 决定如何处理未认证的浏览器请求。
+func (h *Handler) InternalAuthenticate(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	if _, ok := CurrentUser(r.Context()); !ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie(h.cfg.CookieName)
 	if err == nil && cookie.Value != "" {
@@ -115,7 +135,12 @@ func (h *Handler) AttachUser(next http.Handler) http.Handler {
 		session, err := h.store.GetActiveSessionByTokenHash(r.Context(), HashToken(cookie.Value))
 		if err != nil {
 			if !errors.Is(err, db.ErrNotFound) {
-				response.Error(w, http.StatusInternalServerError, "SESSION_CHECK_FAILED", "校验登录状态失败")
+				if r.URL.Path == "/internal/authenticate" {
+					w.Header().Set("Cache-Control", "no-store")
+					w.WriteHeader(http.StatusInternalServerError)
+				} else {
+					response.Error(w, http.StatusInternalServerError, "SESSION_CHECK_FAILED", "校验登录状态失败")
+				}
 				return
 			}
 			next.ServeHTTP(w, r)
