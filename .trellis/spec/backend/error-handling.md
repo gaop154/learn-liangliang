@@ -1,17 +1,16 @@
 # 错误处理规范
 
-> 本项目生产运行时由 Caddy + Nginx 静态站点 + Go API + PostgreSQL 组成；Python 仅作为离线内容维护脚本存在。错误处理分为 Go API JSON 错误、静态站 Nginx 拒绝/404、Caddy 代理错误和 `utils/` 脚本异常处理。
+> 本项目生产运行时由宿主机 Nginx 静态站点、Docker Compose 中的 Go API 和宿主机 PostgreSQL 组成；Python 仅作为离线内容维护脚本存在。错误处理分为 Go API JSON 错误、宿主机 Nginx 拒绝/404 和代理错误、以及 `utils/` 脚本异常处理。
 
 ---
 
 ## 总览
 
-真实错误处理分为四类：
+真实错误处理分为三类：
 
 1. Go API 请求错误：通过 `backend/internal/response` 返回统一 JSON 错误响应。
-2. Nginx 静态站点错误/拒绝：隐藏路径、内部目录、调试文件和缺失文件由 `deploy/nginx/default.conf` 拒绝或返回 404。
-3. Caddy 网关错误：`deploy/caddy/Caddyfile` 将 `/api/*` 转发到 `api:8080`，其他请求转发到 `web:80`；上游不可用时由 Caddy 返回代理错误。
-4. `utils/*.py` 脚本错误：捕获异常，打印失败原因，尽量继续处理后续文件。
+2. 宿主机 Nginx 静态站点错误/拒绝：隐藏路径、内部目录、调试文件和缺失文件由 Nginx 拒绝或返回 404；API 上游 `127.0.0.1:8080` 不可用时返回代理错误。
+3. `utils/*.py` 脚本错误：捕获异常，打印失败原因，尽量继续处理后续文件。
 
 生产 Web 运行时不再包含 Flask/Gunicorn，也不存在 Flask `abort()` 作为请求错误处理方式。
 
@@ -84,21 +83,22 @@ location / {
 
 ---
 
-## Caddy 网关错误处理
+## 宿主机 Nginx API 代理错误处理
 
-`deploy/caddy/Caddyfile` 的职责是路由分流：
+宿主机 Nginx 将 API 请求和内部认证请求反代至回环地址：
 
-```caddyfile
-handle /api/* {
-    reverse_proxy api:8080
+```nginx
+location /api/ {
+    proxy_pass http://127.0.0.1:8080;
 }
 
-handle {
-    reverse_proxy web:80
+location = /internal/authenticate {
+    internal;
+    proxy_pass http://127.0.0.1:8080/internal/authenticate;
 }
 ```
 
-如果 `api` 或 `web` 容器不可用，Caddy 会返回代理层错误。排查时应同时查看 `gateway`、`api`、`web` 容器日志和 `docker compose ps` 状态。
+若 API 容器不可用，Nginx 返回代理层错误。排查时检查 `docker compose -f docker-compose.yaml ps api`、`docker compose -f docker-compose.yaml logs -f api`、宿主机 Nginx 错误日志，以及 API 是否只监听 `127.0.0.1:8080`。
 
 ---
 
@@ -170,4 +170,4 @@ if os.path.exists(save_path):
 - 不要给静态 HTML 请求硬套 API JSON 错误格式；JSON 错误只属于 `/api/*`。
 - 不要在异常日志里打印新的密钥、代理密码或完整敏感配置。
 - 不要在轻量验证时触发大规模下载脚本来“测试错误处理”；这些脚本会访问外网并写入大量文件。
-- 排查访问问题时，先确认 `gateway`、`web`、`api`、`db` 容器状态、服务名和端口是否与 `docker-compose.yml`、`deploy/caddy/Caddyfile` 一致。
+- 排查访问问题时，先确认 `api` 容器状态、宿主机 PostgreSQL 连接、`127.0.0.1:8080` 监听和宿主机 Nginx 上游是否与 `docker-compose.yaml` 一致。

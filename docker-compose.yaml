@@ -1,0 +1,44 @@
+services:
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: learn-api
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      APP_CONFIG_FILE: /app/config.yaml
+    volumes:
+      # 配置文件由宿主机统一管理；缺失或不可读时禁止回退默认配置。
+      - type: bind
+        source: /etc/learn-liangliang/config.yaml
+        target: /app/config.yaml
+        read_only: true
+        bind:
+          create_host_path: false
+
+  content-sync:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: learn-content-sync
+    profiles:
+      - tools
+    network_mode: host
+    restart: "no"
+    environment:
+      APP_CONFIG_FILE: /app/config.yaml
+    volumes:
+      # 配置文件由宿主机统一管理；缺失或不可读时禁止回退默认配置。
+      - type: bind
+        source: /etc/learn-liangliang/config.yaml
+        target: /app/config.yaml
+        read_only: true
+        bind:
+          create_host_path: false
+      # 项目部署目录下的内容只供一次性同步工具读取。
+      - type: bind
+        source: ./content
+        target: /content
+        read_only: true
+    command: ["/app/content-sync", "--content-root", "/content"]

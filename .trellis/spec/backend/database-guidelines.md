@@ -8,12 +8,12 @@
 
 当前持久化方式：
 
-- PostgreSQL：用户、会话和阅读进度数据，由 `db` 容器和 `postgres_data` volume 持久化。
+- PostgreSQL：用户、会话和阅读进度数据，由宿主机独立 PostgreSQL 服务持久化；Compose 不创建数据库容器或数据卷。
 - 页面内容：`index.html`、`content/专栏/**/*.md.html`、`content/其他/{恋爱必修课,文章,极客时间}/**/*.md.html`。
 - PDF 内容：`content/其他/PDF/*.pdf` 和 `content/其他/PDF/index.html`。
 - 静态资源：`static/`、各课程或分类目录内的 `assets/`、`img/`、`live-2d/`。
 - 脚本批处理状态：`utils/task.json`。
-- 部署配置：`docker-compose.yml`、`deploy/caddy/Caddyfile`、`deploy/nginx/default.conf`、`backend/Dockerfile`。
+- 部署配置：API 工具编排 `docker-compose.yaml`、宿主机 Nginx 规则参考 `deploy/nginx/default.conf`、`backend/Dockerfile`；`deploy/caddy/Caddyfile` 为非当前运行时的历史参考。
 - Python 工具脚本依赖：`requirements.txt` 仅包含 `requests`、`beautifulsoup4` 等离线脚本依赖。
 
 生产 Web 运行时不再使用 Flask/Gunicorn，也不依赖根目录 Python `Dockerfile`。
@@ -176,7 +176,7 @@ os.makedirs(os.path.dirname(local_path), exist_ok=True)
 - 迁移脚本放在 `backend/migrations/`。
 - 新增表、索引、约束时必须考虑现有数据兼容性。
 - 与阅读进度相关的唯一键、范围检查和索引不能只在前端校验。
-- PostgreSQL 数据通过 Docker volume 持久化；部署文档必须提醒备份 `postgres_data` 或使用 `pg_dump`。
+- PostgreSQL 数据由宿主机数据库服务持久化；部署文档必须提醒使用宿主机 `pg_dump` 备份。
 
 ### 内容文件迁移
 
@@ -282,4 +282,4 @@ function getArticlePath() {
 - 不要在轻量检查中运行会联网下载大量内容的脚本，例如 `utils/03_patch_others.py`、`utils/04_patch_pdf.py`，除非任务明确要求并已确认影响范围。
 - 不要在代码或文档中新增真实代理账号、密钥或访问令牌；`utils/proxy_pool.py` 当前已包含代理账号样式信息，后续应避免扩大泄露范围。
 - 不要把中文路径批量转义或重命名为英文路径；Nginx、HTML 链接、阅读进度和工具脚本都依赖当前文件布局。
-- 不要删除 PostgreSQL volume 或把生产数据库改成容器内临时文件；阅读进度必须跨容器重建保留。
+- 不要把生产数据库改为容器内临时文件；阅读进度必须由宿主机 PostgreSQL 跨 API 容器重建保留。

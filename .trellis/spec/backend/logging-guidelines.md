@@ -1,6 +1,6 @@
 # 日志规范
 
-> 本项目生产日志主要来自 Caddy 网关、Nginx 静态站点、Go API 容器 stdout/stderr 和 PostgreSQL 容器日志；离线内容维护日志来自 `utils/` 脚本中的 `print()` 中文进度输出。生产 Web 运行时不再包含 Gunicorn/Flask 日志。
+> 本项目生产日志主要来自宿主机 Nginx、Go API 容器 stdout/stderr 和宿主机 PostgreSQL；离线内容维护日志来自 `utils/` 脚本中的 `print()` 中文进度输出。生产 Web 运行时不再包含 Gunicorn/Flask 日志。
 
 ---
 
@@ -8,18 +8,18 @@
 
 当前日志来源：
 
-- Caddy：`gateway` 容器输出访问、TLS 和反向代理相关日志。
-- Nginx：`web` 容器输出静态站点访问和错误日志。
+- Nginx：宿主机 Nginx 输出静态站点访问、认证和反向代理错误日志。
 - Go API：`api` 容器输出启动、迁移、管理员预置账号、请求处理和内部错误相关日志。
-- PostgreSQL：`db` 容器输出数据库启动、连接和错误日志。
+- PostgreSQL：宿主机 PostgreSQL 输出数据库启动、连接和错误日志。
 - Python 工具脚本：使用 `print()` 输出进度、成功、失败、异常、限流和保存率。
 - Shell 脚本：`utils/03_patch_zhuanlan.sh` 使用命令输出和 `echo`；该脚本包含提交/推送命令，自动化执行前必须人工确认。
 
 排查生产问题时优先使用：
 
 ```bash
-docker compose ps
-docker compose logs -f gateway web api db
+docker compose -f docker-compose.yaml ps
+docker compose -f docker-compose.yaml logs -f api
+sudo journalctl -u nginx -f
 ```
 
 ---
@@ -48,21 +48,9 @@ print(f"保存率: {success}/{total} = {success/total:.2%}")
 
 ## 容器日志
 
-### Caddy 网关
+### 宿主机 Nginx 反向代理
 
-`deploy/caddy/Caddyfile` 中的分流规则：
-
-```caddyfile
-handle /api/* {
-    reverse_proxy api:8080
-}
-
-handle {
-    reverse_proxy web:80
-}
-```
-
-如果出现 502/503，应检查目标容器是否健康、服务名是否正确、`api` 是否监听 `:8080`、`web` 是否监听 `:80`。
+宿主机 Nginx 将 `/api/*` 和 `/internal/authenticate` 代理至 `127.0.0.1:8080`。如果出现 502/503，应检查 `api` 容器是否运行、API 是否监听 `127.0.0.1:8080`，以及宿主机 Nginx 错误日志。
 
 ### Nginx 静态站点
 
@@ -118,7 +106,7 @@ if os.path.exists(save_path):
 - 写入位置：例如 `已保存：{save_path}`、`已下载静态资源: {resource_path}`。
 - 失败原因：HTTP 状态码、异常信息、被限流后的等待时间。
 - 跳过原因：文件已存在、链接为空、没有找到目标内容等。
-- 部署检查：`docker compose config` 输出、容器状态、关键容器日志。
+- 部署检查：`docker compose -f docker-compose.yaml config` 输出、容器状态、关键容器日志。
 
 ---
 

@@ -1,17 +1,16 @@
 # 目录结构规范
 
-> 本项目不是传统 Java/Spring 后端业务系统；当前真实形态是“静态内容归档站点 + Go API + PostgreSQL + Caddy/Nginx 容器化部署 + Python 离线内容维护脚本”。本文件记录当前仓库已经存在的组织方式，避免后续任务误按旧 Flask/Gunicorn 入口或大型后端分层来改造。
+> 本项目不是传统 Java/Spring 后端业务系统；当前真实形态是“静态内容归档站点 + 宿主机 Nginx + Docker Compose 中的 Go API + 宿主机 PostgreSQL + Python 离线内容维护脚本”。本文件记录当前仓库已经存在的组织方式，避免后续任务误按旧 Flask/Gunicorn 入口或大型后端分层来改造。
 
 ---
 
 ## 总览
 
-当前仓库的核心内容是已归档的 HTML、PDF、图片和静态资源。生产运行时职责分为四类：
+当前仓库的核心内容是已归档的 HTML、PDF、图片和静态资源。生产运行时职责分为三类：
 
-1. Caddy：统一对外入口，`/api/*` 转发到 Go API，其余请求转发到静态站点。
-2. Nginx web 容器：托管静态 HTML/CSS/JS/PDF/图片、把旧公开 URL 内部映射到 `content/`，并通过 `auth_request` 保护内容区域。
-3. Go API：负责认证、会话、Nginx 内部会话校验和阅读进度同步。
-4. PostgreSQL：持久化用户、会话和阅读进度数据。
+1. 宿主机 Nginx：托管静态 HTML/CSS/JS/PDF/图片、把旧公开 URL 内部映射到 `content/`，通过 `auth_request` 保护内容区域，并反向代理 API。
+2. Go API：由 Docker Compose 常驻 `api` 服务运行，负责认证、会话、Nginx 内部会话校验和阅读进度同步；使用宿主机网络监听 `127.0.0.1:8080`。
+3. 宿主机 PostgreSQL：持久化用户、会话和阅读进度数据。
 
 Python 代码仅保留在 `utils/*.py` 中，承担一次性或批处理抓取、修补归档内容的离线脚本职责，直接读写仓库中的 HTML/PDF/assets 文件。生产 Web 请求链路不再依赖 Python、Flask、Gunicorn 或根目录 Python `Dockerfile`。
 
@@ -23,8 +22,8 @@ Python 代码仅保留在 `utils/*.py` 中，承担一次性或批处理抓取�
 learn-liangliang/
 ├── index.html                         # 站点首页，静态 HTML
 ├── requirements.txt                   # Python 离线工具脚本依赖：requests、beautifulsoup4
-├── docker-compose.yml                 # gateway/web/api/db 编排与持久化 volume
-├── .env.example                       # 生产部署环境变量示例
+├── docker-compose.yaml                # api 常驻与一次性 content-sync 工具编排
+├── .env.example                       # API-only Compose 不使用 .env 的说明
 ├── backend/                           # Go API 服务
 │   ├── Dockerfile                     # Go API 多阶段构建镜像
 │   ├── cmd/api/main.go                # API 启动入口
@@ -109,13 +108,13 @@ parser.add_argument("--column", type=str, default="恋爱必修课", help="专�
 
 ### 部署配置
 
-- `docker-compose.yml` 是生产部署入口，定义：
-  - `gateway`：Caddy，对外暴露 80/443。
-  - `web`：Nginx 静态站点容器，挂载仓库到 `/usr/share/nginx/html:ro`。
-  - `api`：Go API 容器，使用 `backend/Dockerfile` 构建。
-  - `db`：PostgreSQL 16 Alpine，使用 `postgres_data` volume。
-- `deploy/caddy/Caddyfile` 负责网关分流：`/api/*` -> `api:8080`，其他请求 -> `web:80`。
-- `deploy/nginx/default.conf` 负责静态站点路径映射、缓存和敏感目录拒绝。
+- `docker-compose.yaml` 是 API 部署入口，只定义：
+  - `api`：使用 `backend/Dockerfile` 构建、`network_mode: host`、`restart: unless-stopped` 的常驻 Go API；固定只读挂载宿主机 `/etc/learn-liangliang/config.yaml` 至 `/app/config.yaml`，并设置 `APP_CONFIG_FILE=/app/config.yaml`。
+  - `content-sync`：仅在 `tools` profile 中执行、`network_mode: host`、`restart: "no"` 的同步容器；复用同一私有 YAML，另只读挂载与 Compose 文件相对的 `./content`，完成后退出。
+- Compose 不定义 gateway、web、db、端口映射、网络或持久化 volume；宿主机 Nginx 和 PostgreSQL 分别管理静态内容、TLS、反向代理和数据持久化。
+- `.env` 不被当前 Compose 消费；API 与内容同步的私密配置固定来自宿主机 YAML，不应写入 `.env`。
+- `deploy/nginx/default.conf` 是以 `/opt/learn-liangliang` 为站点根目录的宿主机 Nginx 配置基线，负责静态站点路径映射、缓存、敏感目录拒绝和 API 代理；API 上游必须为 `127.0.0.1:8080`。
+- `deploy/caddy/Caddyfile` 是历史配置参考，当前 Compose 不启动 Caddy。
 - 根目录旧 Python `Dockerfile`、`server_flask.py`、旧 `learn-liangliang.conf`、`restart_nginx.sh` 不再作为生产运行时入口存在。
 
 ---
@@ -139,7 +138,7 @@ parser.add_argument("--column", type=str, default="恋爱必修课", help="专�
 - 新的内容抓取/修补流程：放在 `utils/`，按现有数字前缀延续命名，并尽量支持命令行参数，避免硬编码只能处理一个栏目。
 - 新的全站前端增强：放在 `static/index.js`、`static/reading-progress.js` 或对应 CSS 文件中；如果是第三方静态库，放在 `static/` 或更明确的子目录。
 - 新的站点公共图片：根据用途放到 `img/`；内容型页面和内容私有资源放到 `content/<分类>/...`，内容页局部图片保持在对应内容目录的 `assets/` 子目录。
-- 部署相关变更：Compose 改 `docker-compose.yml`，Go API 镜像改 `backend/Dockerfile`，网关改 `deploy/caddy/Caddyfile`，静态站点 Nginx 改 `deploy/nginx/default.conf`。
+- 部署相关变更：API 工具编排改 `docker-compose.yaml`，Go API 镜像改 `backend/Dockerfile`，宿主机 Nginx 静态站点规则参考 `deploy/nginx/default.conf`；Caddy 配置不属于当前 Compose 运行时。
 
 ---
 
@@ -182,7 +181,7 @@ parser.add_argument("--column", type=str, default="恋爱必修课", help="专�
 
 - `python utils/migrate_content_root.py --dry-run`：断言只处理白名单内容目录，已迁移时只提示跳过。
 - `python -m py_compile utils/*.py`：断言离线工具脚本语法可加载。
-- `docker compose config`：断言 gateway/web/api/db 编排语法有效。
+- `docker compose -f docker-compose.yaml config`：断言 api 与带 `tools` profile 的 content-sync 编排语法有效。
 - 抽样访问迁移后 URL：断言 `/其他/文章/index.html`、`/专栏/.../index.html`、`/其他/PDF/index.html` 可访问，旧分类路径不被映射。
 - 静态资源抽样：断言 `/static/index.js`、`/img/github.svg`、`/live-2d/js/live2d.js` 未被 content 映射破坏。
 
@@ -213,6 +212,6 @@ location / {
 ## 避免的做法
 
 - 不要把本项目误认为 Java 后端；仓库没有 Maven、Spring Boot、Mapper、XML SQL 或 Java service 层。
-- 不要重新引入 Flask/Gunicorn 作为生产 Web 入口；生产静态服务由 Caddy/Nginx 承担，业务 API 由 Go 承担。
+- 不要重新引入 Flask/Gunicorn 作为生产 Web 入口；生产静态服务由宿主机 Nginx 承担，业务 API 由 Go 容器承担。
 - 不要批量重命名中文归档目录或 `*.md.html` 文件；这些路径已经被静态页面、阅读进度和脚本引用。
 - 不要运行会大量联网抓取、提交或推送的脚本作为轻量验证；例如 `utils/03_patch_zhuanlan.sh` 内含 `git commit` 和 `git push -f origin main`，自动化执行前必须人工审查并获得确认。

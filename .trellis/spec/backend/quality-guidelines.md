@@ -1,6 +1,6 @@
 # 质量规范
 
-> 本项目是静态归档站点，生产运行时为 Caddy + Nginx 静态站点 + Go API + PostgreSQL，另保留 Python 离线内容维护脚本。质量重点是路径安全、静态链接可用、API 合约一致、数据库持久化、批量脚本可控、部署配置与实际服务名/端口一致，以及不要误伤大量归档内容。
+> 本项目是静态归档站点，生产运行时为宿主机 Nginx 静态站点 + Docker Compose 中的 Go API + 宿主机 PostgreSQL，另保留 Python 离线内容维护脚本。质量重点是路径安全、静态链接可用、API 合约一致、数据库持久化、批量脚本可控、部署配置与实际主机端口一致，以及不要误伤大量归档内容。
 
 ---
 
@@ -11,9 +11,9 @@
 - Go 后端测试：`cd backend && go test ./...`。
 - 前端脚本语法检查：`node --check static/index.js static/reading-progress.js`。
 - Python 工具脚本语法检查：`python -m py_compile utils/*.py`。
-- Docker 编排检查：`docker compose config`。
+- Docker 编排检查：`docker compose -f docker-compose.yaml config`。
 - 占位符和旧架构检查：确认 `.trellis/spec/backend/*.md` 不再把 Flask/Gunicorn 描述为生产入口。
-- 如修改 Nginx/Caddy 配置，应通过 `docker compose config` 和容器实际访问验证；目标环境有独立 Nginx 时再执行 `nginx -t`。
+- 如修改 Nginx 配置，应通过 `docker compose -f docker-compose.yaml config`、宿主机 `nginx -t` 和实际访问验证；Compose 不运行 Nginx 或 Caddy。
 - 内容已迁移为 `content/专栏/` 与 `content/其他/{恋爱必修课,文章,极客时间,PDF}/`；公开分类入口是 `/专栏/` 与 `/其他/`。旧 `/文章/`、`/极客时间/`、`/恋爱必修课/`、`/PDF/` 不再保留映射或重定向。
 
 ---
@@ -76,17 +76,18 @@ HTML、脚本和阅读进度依赖当前公开 URL 形态：
 - 输出总数、进度、失败原因和保存率。
 - 不引入生产 Web 运行时依赖；Python 依赖只服务离线工具。
 
-### 5. 部署服务名与端口一致性
+### 5. 同机部署端口与挂载一致性
 
 当前生产编排约定：
 
-- `gateway` 使用 Caddy，对外暴露 `80:80` 和 `443:443`。
-- `deploy/caddy/Caddyfile` 将 `/api/*` 反代到 `api:8080`，其他请求到 `web:80`。
-- `web` 使用 `nginx:1.27-alpine`，挂载 `deploy/nginx/default.conf`。
-- `api` 使用 `backend/Dockerfile` 构建，默认监听 `APP_ADDR=:8080`。
-- `db` 使用 PostgreSQL 16 Alpine，数据写入 `postgres_data` volume。
+- 宿主机 Nginx 以 `/opt/learn-liangliang` 为站点根目录，负责 80/443、静态文件、TLS 和 API 反向代理。
+- `api` 使用 `backend/Dockerfile` 构建，采用 `network_mode: host`、`restart: unless-stopped`，并监听 `127.0.0.1:8080`。
+- 宿主机 Nginx 将 `/api/*` 和 `/internal/authenticate` 反代到 `127.0.0.1:8080`。
+- 宿主机 PostgreSQL 同样通过 `127.0.0.1:<端口>` 由 API 访问；Compose 不定义 `db` 服务或数据卷。
+- `content-sync` 仅在 `tools` profile 中按需运行，采用宿主机网络，并只读挂载相对路径 `./content`。
+- `api` 和 `content-sync` 必须将 `/etc/learn-liangliang/config.yaml` 以固定只读 bind mount 挂载到 `/app/config.yaml`，且 `create_host_path: false`；生产配置的 `cookieSecure` 必须为 `true`，仅本地 HTTP 调试可在未提交配置中改为 `false`。
 
-修改服务名、端口或路径时必须同步检查 `docker-compose.yml`、`deploy/caddy/Caddyfile`、`deploy/nginx/default.conf`、`backend/Dockerfile` 和 `.env.example`。
+修改端口、路径或部署方式时必须同步检查 `docker-compose.yaml`、`deploy/nginx/default.conf`、`backend/Dockerfile`、`backend/config.example.yaml` 和 README。
 
 ### 6. 简体中文文档与提示
 
@@ -128,7 +129,7 @@ python -m py_compile utils/*.py
 
 ```bash
 # Docker Compose 配置检查
-docker compose config
+docker compose -f docker-compose.yaml config
 ```
 
 ```bash
@@ -147,12 +148,12 @@ PY
 
 ## 代码评审清单
 
-- 是否符合当前项目形态：静态站点 + Go API + PostgreSQL + Caddy/Nginx + Python 离线脚本？
-- 是否引用了真实存在的文件路径，例如 `backend/`、`utils/*.py`、`static/index.js`、`static/reading-progress.js`、`docker-compose.yml`、`deploy/caddy/Caddyfile`、`deploy/nginx/default.conf`？
+- 是否符合当前项目形态：宿主机 Nginx 静态站点 + Go API 容器 + 宿主机 PostgreSQL + Python 离线脚本？
+- 是否引用了真实存在的文件路径，例如 `backend/`、`utils/*.py`、`static/index.js`、`static/reading-progress.js`、`docker-compose.yaml`、`deploy/nginx/default.conf`？
 - 是否保留中文路径、`.md.html` 后缀和现有静态资源目录，并确保其他分类改为 `/其他/...` 公开 URL？
 - 是否避免了不必要的大规模格式化或批量重写归档内容？
 - 如果改动了抓取脚本，是否保留 timeout、重试、跳过已存在文件、中文进度输出？
 - 如果改动了静态站配置，是否保留 403/404 语义、内部目录拒绝和旧 URL 到 `content/` 的映射？
 - 如果改动了 Go API，是否保持 JSON 错误结构、认证 Cookie 和 `articlePath` canonical 合约？
-- 如果改动了端口或部署方式，是否同步检查 `docker-compose.yml`、`deploy/caddy/Caddyfile`、`deploy/nginx/default.conf`、`backend/Dockerfile` 和 `.env.example`？
+- 如果改动了端口或部署方式，是否同步检查 `docker-compose.yaml`、`deploy/nginx/default.conf`、`backend/Dockerfile`、`backend/config.example.yaml` 和 README？
 - 是否运行了与改动范围匹配的轻量验证？未能验证的部分是否明确说明？
