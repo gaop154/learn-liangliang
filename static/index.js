@@ -91,34 +91,6 @@ function hide_canvas() {
     overlay.classList.remove('show')
 }
 
-// 全站右上角悬浮GitHub图标
-(function() {
-  var githubDiv = document.createElement('div');
-  githubDiv.style.position = 'fixed';
-  githubDiv.style.top = '24px';
-  githubDiv.style.right = '24px';
-  githubDiv.style.zIndex = '9999';
-  githubDiv.style.cursor = 'pointer';
-  githubDiv.title = '访问 GitHub 仓库';
-
-  var githubLink = document.createElement('a');
-  githubLink.href = 'https://github.com/xixiwenxuanhe/learn-liangliang';
-  githubLink.target = '_blank';
-  githubLink.rel = 'noopener noreferrer';
-
-  // 使用本地SVG图片
-  var githubImg = document.createElement('img');
-  githubImg.src = '/img/github.svg';
-  githubImg.alt = 'GitHub';
-  githubImg.style.width = '40px';
-  githubImg.style.height = '40px';
-  githubImg.style.display = 'block';
-
-  githubLink.appendChild(githubImg);
-  githubDiv.appendChild(githubLink);
-  document.body.appendChild(githubDiv);
-})();
-
 // 移除"因收到Google相关通知，网站将会择期关闭"提示
 (function() {
   var allDivs = document.getElementsByTagName('div');
