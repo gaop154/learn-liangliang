@@ -9,7 +9,7 @@
 当前仓库的核心内容是已归档的 HTML、PDF、图片和静态资源。生产运行时职责分为三类：
 
 1. 宿主机 Nginx：托管静态 HTML/CSS/JS/PDF/图片、把旧公开 URL 内部映射到 `content/`，通过 `auth_request` 保护内容区域，并反向代理 API。
-2. Go API：由 Docker Compose 常驻 `api` 服务运行，负责认证、会话、Nginx 内部会话校验和阅读进度同步；使用宿主机网络监听 `127.0.0.1:8080`。
+2. Go API：由 Docker Compose 常驻 `api` 服务运行，负责认证、会话、Nginx 内部会话校验和阅读进度同步；使用宿主机网络监听 `127.0.0.1:8081`。
 3. 宿主机 PostgreSQL：持久化用户、会话和阅读进度数据。
 
 Python 代码仅保留在 `utils/*.py` 中，承担一次性或批处理抓取、修补归档内容的离线脚本职责，直接读写仓库中的 HTML/PDF/assets 文件。生产 Web 请求链路不再依赖 Python、Flask、Gunicorn 或根目录 Python `Dockerfile`。
@@ -109,11 +109,11 @@ parser.add_argument("--column", type=str, default="恋爱必修课", help="专�
 ### 部署配置
 
 - `docker-compose.yaml` 是 API 部署入口，只定义：
-  - `api`：使用 `backend/Dockerfile` 构建、`network_mode: host`、`restart: unless-stopped` 的常驻 Go API；固定只读挂载宿主机 `/etc/learn-liangliang/config.yaml` 至 `/app/config.yaml`，并设置 `APP_CONFIG_FILE=/app/config.yaml`。
+  - `api`：使用 `backend/Dockerfile` 构建、`network_mode: host`、`restart: unless-stopped` 的常驻 Go API；固定只读挂载宿主机 `/data/learn-liangliang/config.yaml` 至 `/app/config.yaml`，并设置 `APP_CONFIG_FILE=/app/config.yaml`。
   - `content-sync`：仅在 `tools` profile 中执行、`network_mode: host`、`restart: "no"` 的同步容器；复用同一私有 YAML，另只读挂载与 Compose 文件相对的 `./content`，完成后退出。
 - Compose 不定义 gateway、web、db、端口映射、网络或持久化 volume；宿主机 Nginx 和 PostgreSQL 分别管理静态内容、TLS、反向代理和数据持久化。
 - `.env` 不被当前 Compose 消费；API 与内容同步的私密配置固定来自宿主机 YAML，不应写入 `.env`。
-- `deploy/nginx/default.conf` 是以 `/opt/learn-liangliang` 为站点根目录的宿主机 Nginx 配置基线，负责静态站点路径映射、缓存、敏感目录拒绝和 API 代理；API 上游必须为 `127.0.0.1:8080`。
+- `deploy/nginx/default.conf` 是以 `/opt/learn-liangliang` 为站点根目录的宿主机 Nginx 配置基线，负责静态站点路径映射、缓存、敏感目录拒绝和 API 代理；API 上游必须为 `127.0.0.1:8081`。
 - `deploy/caddy/Caddyfile` 是历史配置参考，当前 Compose 不启动 Caddy。
 - 根目录旧 Python `Dockerfile`、`server_flask.py`、旧 `learn-liangliang.conf`、`restart_nginx.sh` 不再作为生产运行时入口存在。
 
@@ -181,7 +181,7 @@ parser.add_argument("--column", type=str, default="恋爱必修课", help="专�
 
 - `python utils/migrate_content_root.py --dry-run`：断言只处理白名单内容目录，已迁移时只提示跳过。
 - `python -m py_compile utils/*.py`：断言离线工具脚本语法可加载。
-- `docker compose -f docker-compose.yaml config`：断言 api 与带 `tools` profile 的 content-sync 编排语法有效。
+- `docker-compose -f docker-compose.yaml config`：断言 api 与带 `tools` profile 的 content-sync 编排语法有效。
 - 抽样访问迁移后 URL：断言 `/其他/文章/index.html`、`/专栏/.../index.html`、`/其他/PDF/index.html` 可访问，旧分类路径不被映射。
 - 静态资源抽样：断言 `/static/index.js`、`/img/github.svg`、`/live-2d/js/live2d.js` 未被 content 映射破坏。
 

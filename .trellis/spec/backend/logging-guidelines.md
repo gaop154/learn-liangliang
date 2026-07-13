@@ -17,8 +17,8 @@
 排查生产问题时优先使用：
 
 ```bash
-docker compose -f docker-compose.yaml ps
-docker compose -f docker-compose.yaml logs -f api
+docker-compose -f docker-compose.yaml ps
+docker-compose -f docker-compose.yaml logs -f api
 sudo journalctl -u nginx -f
 ```
 
@@ -50,7 +50,7 @@ print(f"保存率: {success}/{total} = {success/total:.2%}")
 
 ### 宿主机 Nginx 反向代理
 
-宿主机 Nginx 将 `/api/*` 和 `/internal/authenticate` 代理至 `127.0.0.1:8080`。如果出现 502/503，应检查 `api` 容器是否运行、API 是否监听 `127.0.0.1:8080`，以及宿主机 Nginx 错误日志。
+宿主机 Nginx 将 `/api/*` 和 `/internal/authenticate` 代理至 `127.0.0.1:8081`。如果出现 502/503，应检查 `api` 容器是否运行、API 是否监听 `127.0.0.1:8081`，以及宿主机 Nginx 错误日志。
 
 ### Nginx 静态站点
 
@@ -106,7 +106,7 @@ if os.path.exists(save_path):
 - 写入位置：例如 `已保存：{save_path}`、`已下载静态资源: {resource_path}`。
 - 失败原因：HTTP 状态码、异常信息、被限流后的等待时间。
 - 跳过原因：文件已存在、链接为空、没有找到目标内容等。
-- 部署检查：`docker compose -f docker-compose.yaml config` 输出、容器状态、关键容器日志。
+- 部署检查：`docker-compose -f docker-compose.yaml config` 输出、容器状态、关键容器日志。
 
 ---
 

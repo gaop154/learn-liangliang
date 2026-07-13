@@ -1,8 +1,13 @@
+x-backend-build: &backend-build
+  context: ./backend
+  dockerfile: Dockerfile
+  args:
+    GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}
+    GOSUMDB: ${GOSUMDB:-sum.golang.org}
+
 services:
   api:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    build: *backend-build
     container_name: learn-api
     network_mode: host
     restart: unless-stopped
@@ -11,16 +16,14 @@ services:
     volumes:
       # 配置文件由宿主机统一管理；缺失或不可读时禁止回退默认配置。
       - type: bind
-        source: /etc/learn-liangliang/config.yaml
+        source: /data/learn-liangliang/config.yaml
         target: /app/config.yaml
         read_only: true
         bind:
           create_host_path: false
 
   content-sync:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    build: *backend-build
     container_name: learn-content-sync
     profiles:
       - tools
@@ -31,7 +34,7 @@ services:
     volumes:
       # 配置文件由宿主机统一管理；缺失或不可读时禁止回退默认配置。
       - type: bind
-        source: /etc/learn-liangliang/config.yaml
+        source: /data/learn-liangliang/config.yaml
         target: /app/config.yaml
         read_only: true
         bind:

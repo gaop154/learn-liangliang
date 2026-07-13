@@ -1,4 +1,4 @@
-# API 私有配置示例。Docker Compose 将宿主机 /etc/learn-liangliang/config.yaml
+# API 私有配置示例。Docker Compose 将宿主机 /data/learn-liangliang/config.yaml
 # 只读挂载到 api 与 content-sync 容器的 /app/config.yaml，并以 APP_CONFIG_FILE 显式加载。
 # 同机部署使用 network_mode: host：databaseUrl 直接填写宿主机 PostgreSQL 的用户名、密码和 127.0.0.1 端口。
 # 本地非 Docker 启动时可复制为未提交的 backend/config.yaml；HTTP 调试时再将 cookieSecure 改为 false；不要提交真实配置或凭据。
@@ -7,7 +7,7 @@
 databaseUrl: "postgres://learn:local_dev_password_123@127.0.0.1:5432/learn_liangliang?sslmode=disable"
 
 app:
-  addr: "127.0.0.1:8080"
+  addr: "127.0.0.1:8081"
   cookieName: "learn_session"
   cookieSecure: true
   sessionTtlHours: 720

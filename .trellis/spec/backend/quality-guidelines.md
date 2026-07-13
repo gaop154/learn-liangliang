@@ -11,9 +11,9 @@
 - Go 后端测试：`cd backend && go test ./...`。
 - 前端脚本语法检查：`node --check static/index.js static/reading-progress.js`。
 - Python 工具脚本语法检查：`python -m py_compile utils/*.py`。
-- Docker 编排检查：`docker compose -f docker-compose.yaml config`。
+- Docker 编排检查：`docker-compose -f docker-compose.yaml config`。
 - 占位符和旧架构检查：确认 `.trellis/spec/backend/*.md` 不再把 Flask/Gunicorn 描述为生产入口。
-- 如修改 Nginx 配置，应通过 `docker compose -f docker-compose.yaml config`、宿主机 `nginx -t` 和实际访问验证；Compose 不运行 Nginx 或 Caddy。
+- 如修改 Nginx 配置，应通过 `docker-compose -f docker-compose.yaml config`、宿主机 `nginx -t` 和实际访问验证；Compose 不运行 Nginx 或 Caddy。
 - 内容已迁移为 `content/专栏/` 与 `content/其他/{恋爱必修课,文章,极客时间,PDF}/`；公开分类入口是 `/专栏/` 与 `/其他/`。旧 `/文章/`、`/极客时间/`、`/恋爱必修课/`、`/PDF/` 不再保留映射或重定向。
 
 ---
@@ -81,11 +81,12 @@ HTML、脚本和阅读进度依赖当前公开 URL 形态：
 当前生产编排约定：
 
 - 宿主机 Nginx 以 `/opt/learn-liangliang` 为站点根目录，负责 80/443、静态文件、TLS 和 API 反向代理。
-- `api` 使用 `backend/Dockerfile` 构建，采用 `network_mode: host`、`restart: unless-stopped`，并监听 `127.0.0.1:8080`。
-- 宿主机 Nginx 将 `/api/*` 和 `/internal/authenticate` 反代到 `127.0.0.1:8080`。
+- `api` 使用 `backend/Dockerfile` 构建，采用 `network_mode: host`、`restart: unless-stopped`，并监听 `127.0.0.1:8081`。
+- 宿主机 Nginx 将 `/api/*` 和 `/internal/authenticate` 反代到 `127.0.0.1:8081`。
 - 宿主机 PostgreSQL 同样通过 `127.0.0.1:<端口>` 由 API 访问；Compose 不定义 `db` 服务或数据卷。
 - `content-sync` 仅在 `tools` profile 中按需运行，采用宿主机网络，并只读挂载相对路径 `./content`。
-- `api` 和 `content-sync` 必须将 `/etc/learn-liangliang/config.yaml` 以固定只读 bind mount 挂载到 `/app/config.yaml`，且 `create_host_path: false`；生产配置的 `cookieSecure` 必须为 `true`，仅本地 HTTP 调试可在未提交配置中改为 `false`。
+- `api` 和 `content-sync` 必须将 `/data/learn-liangliang/config.yaml` 以固定只读 bind mount 挂载到 `/app/config.yaml`，且 `create_host_path: false`；生产配置的 `cookieSecure` 必须为 `true`，仅本地 HTTP 调试可在未提交配置中改为 `false`。
+- Go 模块代理和校验库仅允许通过 Compose `build.args` 传入 Docker 构建阶段；不得写入私有 `config.yaml` 或 API、内容同步容器的运行时环境。默认使用 `https://proxy.golang.org,direct` 与 `sum.golang.org`，受限网络可临时改为镜像服务。
 
 修改端口、路径或部署方式时必须同步检查 `docker-compose.yaml`、`deploy/nginx/default.conf`、`backend/Dockerfile`、`backend/config.example.yaml` 和 README。
 
@@ -129,7 +130,7 @@ python -m py_compile utils/*.py
 
 ```bash
 # Docker Compose 配置检查
-docker compose -f docker-compose.yaml config
+docker-compose -f docker-compose.yaml config
 ```
 
 ```bash
