@@ -50,19 +50,78 @@ CREATE DATABASE learn_liangliang OWNER learn;
 
 PostgreSQL 保持只监听宿主机所需地址即可。本 Compose 不创建数据库容器、网络或数据卷；备份请使用宿主机 PostgreSQL 的 `pg_dump`。
 
-### 3.2 准备站点和 API 私有配置
+### 3.2 准备项目运行目录、Git Bundle 与 API 私有配置
 
-将项目部署到宿主机，例如：
+本说明将**已提交的项目代码**部署在 `/usr/local/learn-liangliang`，将不提交的 API 私有配置放在 `/data/learn-liangliang/config.yaml`。两者用途不同：后续执行 Git、Compose、内容同步以及 Nginx `root` 时使用项目运行目录；仅配置文件使用 `/data/learn-liangliang`，不要将整个仓库克隆到配置目录。
+
+#### 3.2.1 使用 Git Bundle 离线首次部署
+
+当 CentOS 服务器访问 GitHub 缓慢或不稳定时，可在 Windows 的 Git Bash 中创建 Git Bundle 后通过 SCP 传输。Bundle 仅包含创建时已提交到 Git 的内容，**不包含**本机未提交的文件；需要随部署交付的改动必须先提交。
+
+在本地仓库根目录执行：
 
 ```bash
-git clone <仓库地址> /data/learn-liangliang
-sudo chmod -R a+rX /data/learn-liangliang
+git bundle create learn-liangliang.bundle --all
+scp learn-liangliang.bundle <服务器用户>@<服务器地址>:/tmp/
 ```
+
+服务器端首次克隆前，先检查目标目录。若 `/usr/local/learn-liangliang` 已存在，不要直接覆盖或删除；应先停止相关更新操作并备份实际目录，确认目录用途后再继续。若生产环境使用的是其他实际项目目录，应以该目录为准，并同步检查 Nginx `root`、Compose 执行位置和后续命令，避免创建第二份仓库。
+
+```bash
+PROJECT_DIR=/usr/local/learn-liangliang
+
+if sudo test -e "$PROJECT_DIR"; then
+  echo "目标目录已存在：$PROJECT_DIR；请先确认用途并备份，未执行克隆。"
+  exit 1
+fi
+
+# 仅在已确认目录可安全创建时执行。
+sudo git clone /tmp/learn-liangliang.bundle /usr/local/learn-liangliang
+sudo chmod -R a+rX /usr/local/learn-liangliang
+sudo -H git -C /usr/local/learn-liangliang log -1 --oneline
+sudo test -f /usr/local/learn-liangliang/content/专栏/index.html
+```
+
+最后两条命令分别确认最新提交可读取，以及课程总目录文件已随 Bundle 部署。Bundle 只是离线传输介质，不提供 `push` 能力；GitHub 仍是源码主库，服务器仓库可以继续将 `origin` 保持为 GitHub。
+
+#### 3.2.2 使用 Git Bundle 安全更新现有仓库
+
+更新前先在**本地**完成并提交需要部署的改动，然后确认实际分支。不要假定分支一定是 `main`；当前工作分支可能是 `main-new`，应以 `git branch --show-current` 的输出为准。
+
+```bash
+# Windows Git Bash，本地仓库根目录
+git status --short
+git branch --show-current
+# 确认改动已提交后，使用当前分支重新创建并上传 Bundle。
+git bundle create learn-liangliang.bundle --all
+scp learn-liangliang.bundle <服务器用户>@<服务器地址>:/tmp/
+```
+
+服务器端先确认工作区没有未提交改动，并在合并前备份整个实际项目目录。以下示例使用 `/usr/local/learn-liangliang`；若服务器实际部署目录不同，只替换 `PROJECT_DIR`，不要移动或覆盖现有目录。将本地和服务器 `git branch --show-current` 输出的实际分支名填入 `BRANCH`，例如输出为 `main-new` 时设为 `BRANCH=main-new`。
+
+```bash
+PROJECT_DIR=/usr/local/learn-liangliang
+BUNDLE=/tmp/learn-liangliang.bundle
+
+sudo -H git -C "$PROJECT_DIR" status --short
+# 上一条必须没有输出；如有未提交文件，先人工处理或备份，暂不更新。
+
+sudo tar -C /usr/local -czf "/root/learn-liangliang-backup-$(date +%F-%H%M%S).tar.gz" learn-liangliang
+sudo -H git -C "$PROJECT_DIR" branch --show-current
+# 将实际输出代入，不能凭经验硬编码或猜测分支名。
+BRANCH=<git branch --show-current 的实际输出>
+
+sudo -H git -C "$PROJECT_DIR" fetch "$BUNDLE" "$BRANCH"
+sudo -H git -C "$PROJECT_DIR" log -1 --oneline FETCH_HEAD
+sudo -H git -C "$PROJECT_DIR" merge --ff-only FETCH_HEAD
+```
+
+`fetch` 后先检查 `FETCH_HEAD` 提交，再使用 `merge --ff-only` 更新，避免产生意外合并提交；不要使用 `git reset --hard`。完成快进更新后，继续执行本章的 Compose 构建和内容同步步骤。服务器的 `origin` 无需改为 Bundle 路径，仍可保留 GitHub 地址；下次更新只需重新上传新的 Bundle。
 
 创建仅供 API 和内容同步容器读取的配置文件。根目录 `.env` 不是此 Compose 的配置来源；不需要创建 `.env`，也不要将数据库密码、`APP_*` 或管理员配置写入其中。
 
 ```bash
-cd /data/learn-liangliang
+cd /usr/local/learn-liangliang
 sudo install -d -m 700 /data/learn-liangliang
 sudo install -m 600 backend/config.example.yaml /data/learn-liangliang/config.yaml
 sudo chown root:root /data/learn-liangliang/config.yaml
@@ -100,7 +159,7 @@ server {
     server_name nicenickname.cn;
 
     # 证书配置沿用服务器现有 HTTPS 配置。
-    root /data/learn-liangliang;
+    root /usr/local/learn-liangliang;
     index index.html;
 
     # 从 deploy/nginx/default.conf 完整复制其余 location 规则，
@@ -198,14 +257,14 @@ curl -i http://127.0.0.1:8081/api/health
 curl -k -I https://nicenickname.cn:2085/
 ```
 
-若仍看到 `Welcome to nginx!`，依次检查：请求是否确实使用 `https://nicenickname.cn:2085/`；该域名和端口是否命中此 `server` 块；该块是否含有 `root /data/learn-liangliang`、`index index.html` 和完整 `try_files` 规则；以及修改后的配置是否已通过 `nginx -t` 并成功重载。以上命令仅为部署后的人工验证步骤，本文档不表示已在服务器上验证成功。
+若仍看到 `Welcome to nginx!`，依次检查：请求是否确实使用 `https://nicenickname.cn:2085/`；该域名和端口是否命中此 `server` 块；该块是否含有 `root /usr/local/learn-liangliang`、`index index.html` 和完整 `try_files` 规则；以及修改后的配置是否已通过 `nginx -t` 并成功重载。以上命令仅为部署后的人工验证步骤，本文档不表示已在服务器上验证成功。
 
 ### 3.4 启动 API
 
 先验证 Compose，再构建并启动默认的 `api` 服务：
 
 ```bash
-cd /data/learn-liangliang
+cd /usr/local/learn-liangliang
 docker-compose -f docker-compose.yaml config
 docker-compose -f docker-compose.yaml up -d --build
 docker-compose -f docker-compose.yaml ps
@@ -234,7 +293,7 @@ curl -i http://127.0.0.1:8081/api/health
 首次部署、数据库迁移后，或 `content/` 有新增、删除、恢复或顺序调整时，必须执行内容同步。同步服务只读挂载与 Compose 文件相对的 `./content` 目录，完成后自动退出：
 
 ```bash
-cd /data/learn-liangliang
+cd /usr/local/learn-liangliang
 docker-compose -f docker-compose.yaml --profile tools run --rm content-sync
 ```
 
@@ -242,12 +301,11 @@ docker-compose -f docker-compose.yaml --profile tools run --rm content-sync
 
 ### 3.6 更新、停机和备份
 
-更新 API 或内容时：
+更新 API 或内容时，先按 [3.2.2 使用 Git Bundle 安全更新现有仓库](#322-使用-git-bundle-安全更新现有仓库) 上传、检查并快进合并新的 Bundle；不要在服务器网络不稳定时改用 `git pull`。完成代码更新后执行：
 
 ```bash
-cd /data/learn-liangliang
+cd /usr/local/learn-liangliang
 sudo -u postgres pg_dump learn_liangliang > "backup-$(date +%F-%H%M%S).sql"
-git pull --ff-only
 docker-compose -f docker-compose.yaml config
 docker-compose -f docker-compose.yaml up -d --build
 docker-compose -f docker-compose.yaml --profile tools run --rm content-sync
