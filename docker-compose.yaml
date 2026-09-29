@@ -1,5 +1,5 @@
 x-backend-build: &backend-build
-  context: ./backend
+  context: ./src/backend
   dockerfile: Dockerfile
   args:
     GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}
@@ -15,8 +15,9 @@ services:
       APP_CONFIG_FILE: /app/config.yaml
     volumes:
       # 配置文件由宿主机统一管理；缺失或不可读时禁止回退默认配置。
+      # source 相对 compose 文件所在目录（部署目录）解析，即部署目录下的 config/config.yaml。
       - type: bind
-        source: /data/learn-liangliang/config.yaml
+        source: ./config/config.yaml
         target: /app/config.yaml
         read_only: true
         bind:
@@ -33,15 +34,16 @@ services:
       APP_CONFIG_FILE: /app/config.yaml
     volumes:
       # 配置文件由宿主机统一管理；缺失或不可读时禁止回退默认配置。
+      # source 相对 compose 文件所在目录（部署目录）解析，即部署目录下的 config/config.yaml。
       - type: bind
-        source: /data/learn-liangliang/config.yaml
+        source: ./config/config.yaml
         target: /app/config.yaml
         read_only: true
         bind:
           create_host_path: false
-      # 项目部署目录下的内容只供一次性同步工具读取。
+      # 部署目录 src/ 内的归档内容只供一次性同步工具读取。
       - type: bind
-        source: ./content
+        source: ./src/content
         target: /content
         read_only: true
     command: ["/app/content-sync", "--content-root", "/content"]

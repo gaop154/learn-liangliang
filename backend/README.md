@@ -6,7 +6,7 @@
 
 根目录 `docker-compose.yaml` 仅运行常驻 `api` 与按需 `content-sync` 工具服务；Nginx、静态站点、TLS 和 PostgreSQL 由同一台宿主机独立管理。
 
-Compose 使用 `network_mode: host`，将 Docker 宿主机的 `/data/learn-liangliang/config.yaml` 只读挂载到容器内 `/app/config.yaml`，并设置 `APP_CONFIG_FILE=/app/config.yaml`。`api` 与 `content-sync` 都使用该配置；源文件缺失或不可读时，`create_host_path: false` 会使 Compose 失败，不会回退到默认配置。
+Compose 使用 `network_mode: host`，将 Docker 宿主机的 `/opt/docker/learn-liangliang/config/config.yaml` 只读挂载到容器内 `/app/config.yaml`，并设置 `APP_CONFIG_FILE=/app/config.yaml`。`api` 与 `content-sync` 都使用该配置；源文件缺失或不可读时，`create_host_path: false` 会使 Compose 失败，不会回退到默认配置。
 
 `databaseUrl` 可直接使用宿主机 PostgreSQL 的用户名、密码及 `127.0.0.1` 端口，例如：
 
