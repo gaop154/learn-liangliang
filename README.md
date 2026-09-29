@@ -104,43 +104,51 @@ sudo install -m 644 "$PROJECT_DIR/docker-compose.yaml" /opt/docker/learn-liangli
 
 #### 3.2.2 使用 Git Bundle 安全更新现有仓库
 
+日常更新使用**增量 Bundle**：只打包服务器缺少的提交，避免每次上传整仓历史。全量 Bundle（`--all`）仅在 [3.2.1](#321-使用-git-bundle-离线首次部署) 首次部署时使用；若增量起点不被服务器识别导致 `bundle verify` 失败，再退回全量方式重建。
+
 更新前先在**本地**完成并提交需要部署的改动，然后确认实际分支。不要假定分支一定是 `main`；当前工作分支可能是 `main-new`，应以 `git branch --show-current` 的输出为准。
 
 ```bash
 # Windows Git Bash，本地仓库根目录
 git status --short
 git branch --show-current
-# 确认改动已提交后，使用当前分支重新创建并上传 Bundle。
-git bundle create learn-liangliang.bundle --all
-scp learn-liangliang.bundle <服务器用户>@<服务器地址>:/tmp/
+# 确认改动已提交后，以“服务器当前提交..当前分支”为范围创建增量 Bundle。
+# 示例中的 main-new 须替换为 git branch --show-current 的实际输出；
+# <服务器当前提交> 是服务器仓库 log -1 所在提交（见下方服务器步骤），起点不一致时 verify 会失败。
+git bundle create learn-liangliang-update.bundle <服务器当前提交>..main-new
+scp learn-liangliang-update.bundle <服务器用户>@<服务器地址>:/tmp/
 ```
 
-服务器端先确认工作区没有未提交改动，并在合并前备份整个实际项目目录。以下示例使用 `/opt/docker/learn-liangliang/src`；若服务器实际部署目录不同，只替换 `PROJECT_DIR`，不要移动或覆盖现有目录。将本地和服务器 `git branch --show-current` 输出的实际分支名填入 `BRANCH`，例如输出为 `main-new` 时设为 `BRANCH=main-new`。
+服务器端先确认工作区没有未提交改动，并在合并前备份整个实际项目目录。以下示例使用 `/opt/docker/learn-liangliang/src`；若服务器实际部署目录不同，只替换 `PROJECT_DIR`，不要移动或覆盖现有目录。
 
 ```bash
 PROJECT_DIR=/opt/docker/learn-liangliang/src
-BUNDLE=/tmp/learn-liangliang.bundle
+BUNDLE=/tmp/learn-liangliang-update.bundle
 
 sudo -H git -C "$PROJECT_DIR" status --short
 # 上一条必须没有输出；如有未提交文件，先人工处理或备份，暂不更新。
 
 sudo tar -C /opt/docker/learn-liangliang -czf "/root/learn-liangliang-src-backup-$(date +%F-%H%M%S).tar.gz" src
-sudo -H git -C "$PROJECT_DIR" branch --show-current
-# 将实际输出代入，不能凭经验硬编码或猜测分支名。
-BRANCH=<git branch --show-current 的实际输出>
 
-sudo -H git -C "$PROJECT_DIR" fetch "$BUNDLE" "$BRANCH"
+# 确认服务器当前提交；它必须与本地增量 Bundle 的起点完全一致，
+# 不一致时回到本地重新按实际提交打包，不能强行 fetch。
+sudo -H git -C "$PROJECT_DIR" log -1 --oneline
+
+# 校验增量 Bundle 依赖的基础提交齐备；报错说明起点不一致，不要继续。
+sudo -H git -C "$PROJECT_DIR" bundle verify "$BUNDLE"
+
+sudo -H git -C "$PROJECT_DIR" fetch "$BUNDLE" main-new
 sudo -H git -C "$PROJECT_DIR" log -1 --oneline FETCH_HEAD
 sudo -H git -C "$PROJECT_DIR" merge --ff-only FETCH_HEAD
 ```
 
-`fetch` 后先检查 `FETCH_HEAD` 提交，再使用 `merge --ff-only` 更新，避免产生意外合并提交；不要使用 `git reset --hard`。完成快进更新后，将仓库内的 Compose 编排文件重新复制到部署目录根部，使该文件随仓库更新保持同步：
+`fetch` 的分支名与本地打包时使用的当前分支一致。先检查 `FETCH_HEAD` 提交，再使用 `merge --ff-only` 更新，避免产生意外合并提交；不要使用 `git reset --hard`。完成快进更新后，将仓库内的 Compose 编排文件重新复制到部署目录根部，使该文件随仓库更新保持同步：
 
 ```bash
 sudo install -m 644 "$PROJECT_DIR/docker-compose.yaml" /opt/docker/learn-liangliang/docker-compose.yaml
 ```
 
-随后继续执行本章的 Compose 构建和内容同步步骤。服务器的 `origin` 无需改为 Bundle 路径，仍可保留 GitHub 地址；下次更新只需重新上传新的 Bundle。
+随后继续执行本章的 Compose 构建和内容同步步骤。服务器的 `origin` 无需改为 Bundle 路径，仍可保留 GitHub 地址；下次更新重复「本地确认服务器当前提交后打增量 Bundle → 上传 → verify → 快进合并」即可。
 
 创建仅供 API 和内容同步容器读取的配置文件。根目录 `.env` 不是此 Compose 的配置来源；不需要创建 `.env`，也不要将数据库密码、`APP_*` 或管理员配置写入其中。
 
