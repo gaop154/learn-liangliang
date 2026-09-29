@@ -25,20 +25,20 @@ API 只监听 `127.0.0.1:8081`，由宿主机 Nginx 反向代理 `/api/` 与 `/i
 启动与同步命令均显式指定 Compose 文件：
 
 ```bash
-docker-compose -f docker-compose.yaml config
-docker-compose -f docker-compose.yaml up -d --build
-docker-compose -f docker-compose.yaml --profile tools run --rm content-sync
-docker-compose -f docker-compose.yaml logs -f api
-docker-compose -f docker-compose.yaml down
+docker compose -f docker-compose.yaml config
+docker compose -f docker-compose.yaml up -d --build
+docker compose -f docker-compose.yaml --profile tools run --rm content-sync
+docker compose -f docker-compose.yaml logs -f api
+docker compose -f docker-compose.yaml down
 ```
 
-默认 `docker-compose -f docker-compose.yaml up -d` 不会启动带 `tools` profile 的 `content-sync`。首次部署、数据库迁移后或 `content/` 变更后必须手动运行一次同步。
+默认 `docker compose -f docker-compose.yaml up -d` 不会启动带 `tools` profile 的 `content-sync`。首次部署、数据库迁移后或 `content/` 变更后必须手动运行一次同步。
 
 若服务器网络无法访问 Go 官方模块服务，可仅在本次构建前临时指定模块代理和校验库：
 
 ```bash
 GOPROXY=https://goproxy.cn,direct GOSUMDB=sum.golang.google.cn \
-  docker-compose -f docker-compose.yaml up -d --build
+  docker compose -f docker-compose.yaml up -d --build
 ```
 
 `api` 与 `content-sync` 复用相同的构建参数。该配置只在 Docker 构建阶段用于下载模块，不会写入私有 `config.yaml` 或容器运行时环境；网络正常时无需设置，默认使用 `https://proxy.golang.org,direct` 和 `sum.golang.org`。

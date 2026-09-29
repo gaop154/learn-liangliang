@@ -32,7 +32,7 @@
 - `api`：常驻 Go API，使用宿主机网络并以 `restart: unless-stopped` 运行。
 - `content-sync`：带 `tools` profile 的一次性内容索引工具，默认 `up -d` 不会启动它。
 
-Nginx、静态站点、TLS 证书和 PostgreSQL 由同一台 CentOS 宿主机独立部署、运维和备份。API 容器使用 `network_mode: host`，因此 API 和 PostgreSQL 都使用宿主机回环地址；本部署的 API 必须监听 `127.0.0.1:8081`，宿主机 Nginx 将 `/api/` 和内部认证请求反向代理至该地址。不要对 8081 或 PostgreSQL 端口配置公网监听或防火墙放行。
+Nginx、静态站点、TLS 证书和 PostgreSQL 由同一台 Ubuntu 宿主机独立部署、运维和备份。API 容器使用 `network_mode: host`，因此 API 和 PostgreSQL 都使用宿主机回环地址；本部署的 API 必须监听 `127.0.0.1:8081`，宿主机 Nginx 将 `/api/` 和内部认证请求反向代理至该地址。不要对 8081 或 PostgreSQL 端口配置公网监听或防火墙放行。
 
 ### 3.1 准备 PostgreSQL
 
@@ -67,7 +67,7 @@ PostgreSQL 保持只监听宿主机所需地址即可。本 Compose 不创建数
 
 #### 3.2.1 使用 Git Bundle 离线首次部署
 
-当 CentOS 服务器访问 GitHub 缓慢或不稳定时，可在 Windows 的 Git Bash 中创建 Git Bundle 后通过 SCP 传输。Bundle 仅包含创建时已提交到 Git 的内容，**不包含**本机未提交的文件；需要随部署交付的改动必须先提交。
+当服务器访问 GitHub 缓慢或不稳定时，可在 Windows 的 Git Bash 中创建 Git Bundle 后通过 SCP 传输。Bundle 仅包含创建时已提交到 Git 的内容，**不包含**本机未提交的文件；需要随部署交付的改动必须先提交。
 
 在本地仓库根目录执行：
 
@@ -168,6 +168,8 @@ admin:
   displayName: "管理员"
 ```
 
+`databaseUrl` 是标准 URL：密码若含 `^`、`#`、`?`、`/`、`%`、空格等特殊字符，必须按百分号编码写入（如 `^` 写作 `%5E`），否则连接串解析失败，API 启动即报 `invalid userinfo`。
+
 Compose 使用固定的只读 bind mount 将该文件挂载为 `/app/config.yaml`，并设置 `APP_CONFIG_FILE=/app/config.yaml`。挂载采用 `create_host_path: false`：源文件缺失、路径错误或无读取权限时，Compose 会失败，不会创建空文件或回退到默认配置。
 
 ### 3.3 配置宿主机 Nginx
@@ -198,78 +200,16 @@ server {
 - `/content/**`、`backend/`、`deploy/`、`utils/`、隐藏文件和敏感根文件的 `deny` 规则。
 - CSS、JavaScript、图片、字体和 PDF 的缓存规则；受保护内容规则必须保持在公共资源缓存规则之前，避免绕过鉴权。
 
-#### Nginx 缺少 `auth_request` 模块时的处理
+#### `auth_request` 模块确认
 
-`auth_request` 是 `/专栏/**`、`/其他/**` 和 `/reading-history.html` 内容登录保护所需的 Nginx 模块。若 `nginx -t` 报 `unknown directive "auth_request"`，不得通过删除 `auth_request` 或受保护 location 的方式绕过；那会使受保护内容失去统一的登录校验。应使用与服务器二进制相同的 Nginx 版本重新编译，并显式加入 `--with-http_auth_request_module`。
-
-已确认的服务器二进制为 `/usr/local/nginx/sbin/nginx`，版本是 `nginx/1.24.0`，现有编译参数仅为：
-
-```text
---prefix=/usr/local/nginx --with-http_ssl_module --with-http_v2_module
-```
-
-以下命令保留上述参数，只追加认证子请求模块。命令以 `/usr/local/src` 作为源码目录；`curl` 和 `wget` 二选一即可。执行前先备份当前二进制与配置，且只执行 `make`，**不要执行 `make install`**，避免安装过程覆盖现有部署文件。
+Nginx 已改用 apt 安装于宿主机（Ubuntu，配置位于 `/etc/nginx/`）；Ubuntu 官方源的 nginx 已编入 `http_auth_request_module`，无需源码编译。站点配置放入 `/etc/nginx/conf.d/learn-liangliang.conf`，或放 `sites-available/` 后软链到 `sites-enabled/`。安装或升级后确认模块存在、配置可加载：
 
 ```bash
-# 备份时间戳请保留，回退时需要使用对应的二进制备份。
-backup_suffix="$(date +%F-%H%M%S)"
-sudo cp -a /usr/local/nginx/sbin/nginx "/usr/local/nginx/sbin/nginx.backup-${backup_suffix}"
-sudo tar -C /usr/local/nginx -czf "/usr/local/nginx/conf.backup-${backup_suffix}.tar.gz" conf
-
-cd /usr/local/src
-sudo curl -fLO https://nginx.org/download/nginx-1.24.0.tar.gz
-# 或：sudo wget https://nginx.org/download/nginx-1.24.0.tar.gz
-sudo tar -xzf nginx-1.24.0.tar.gz
-cd nginx-1.24.0
-sudo ./configure \
-  --prefix=/usr/local/nginx \
-  --with-http_ssl_module \
-  --with-http_v2_module \
-  --with-http_auth_request_module
-sudo make
-
-# 必须同时确认新二进制已编入模块，且使用现有配置能够通过语法检查。
-sudo ./objs/nginx -V
-sudo ./objs/nginx -t -c /usr/local/nginx/conf/nginx.conf
+sudo nginx -V 2>&1 | grep -o with-http_auth_request_module
+sudo nginx -t
 ```
 
-`./objs/nginx -V` 的输出应包含 `--with-http_auth_request_module`；仅在这两项验证成功后，才复制构建产物替换运行时二进制：
-
-```bash
-sudo install -m 755 ./objs/nginx /usr/local/nginx/sbin/nginx
-```
-
-替换二进制后，普通 `reload` 仅向正在运行的旧 master 发送重载信号，旧进程不会获得新编译的模块；不能只执行 `systemctl reload nginx` 或 `nginx -s reload` 来完成此次模块升级。为尽量不中断连接，应保留旧 master，按以下平滑二进制升级流程操作。下列 PID 文件路径基于当前 `--prefix=/usr/local/nginx`；如配置中通过 `pid` 指令另行指定，须改用实际路径。
-
-```bash
-# 先确认当前旧 master PID；此时 nginx.pid 指向旧 master。
-sudo cat /usr/local/nginx/logs/nginx.pid
-
-# 让旧 master 启动新二进制；成功后会保留旧 PID 到 nginx.pid.oldbin，
-# 并创建新的 nginx.pid。两个 master 短时间内会同时存在。
-sudo sh -c 'kill -USR2 "$(cat /usr/local/nginx/logs/nginx.pid)"'
-sudo cat /usr/local/nginx/logs/nginx.pid
-sudo cat /usr/local/nginx/logs/nginx.pid.oldbin
-sudo ps -fp "$(sudo cat /usr/local/nginx/logs/nginx.pid)" \
-  "$(sudo cat /usr/local/nginx/logs/nginx.pid.oldbin)"
-
-# 在新 master 确认可用后，优雅退出旧 master；不要误向 nginx.pid 发送 QUIT。
-sudo sh -c 'kill -QUIT "$(cat /usr/local/nginx/logs/nginx.pid.oldbin)"'
-```
-
-`nginx.pid.oldbin` 仅在 `USR2` 平滑升级期间指向旧 master；在确认新进程、站点和认证链路正常前，不要执行最后的 `QUIT`，也不要删除该文件或备份。后续仅修改配置而不更换模块时，才可使用正常的 `nginx -t` 加 `reload` 流程。
-
-若新二进制或新配置异常，且旧 master 尚未执行 `QUIT`，旧 master 及其 worker 仍在运行；只需优雅退出新 master，再恢复磁盘上的备份二进制。不要对旧 master 发送 `HUP`，因为它不具备 `auth_request` 模块，重载包含该指令的配置会失败。将示例备份文件名替换为实际生成的时间戳文件名。
-
-```bash
-# nginx.pid.oldbin 是仍在服务的旧 master，nginx.pid 是新 master。
-sudo sh -c 'kill -QUIT "$(cat /usr/local/nginx/logs/nginx.pid)"'
-sudo install -m 755 /usr/local/nginx/sbin/nginx.backup-<时间戳> \
-  /usr/local/nginx/sbin/nginx
-sudo /usr/local/nginx/sbin/nginx -t -c /usr/local/nginx/conf/nginx.conf
-```
-
-若已经结束旧 master，不能再依赖 `nginx.pid.oldbin` 回退；应在维护窗口内恢复备份二进制和配置备份，再按实际服务管理方式启动 Nginx。上述编译、升级和回退命令是针对已确认版本及参数的操作指引，尚未在该服务器上实际执行或验证。
+`auth_request` 是 `/专栏/**`、`/其他/**` 和 `/reading-history.html` 内容登录保护所需的模块。若因非官方安装方式导致 `nginx -t` 报 `unknown directive "auth_request"`，不得通过删除 `auth_request` 或受保护 location 的方式绕过；那会使受保护内容失去统一的登录校验。应改回官方 apt 包，或自行编译并显式加入 `--with-http_auth_request_module`。
 
 配置完成后，在服务器上验证、重载并检查 API 与 HTTPS 首页：
 
@@ -288,19 +228,19 @@ curl -k -I https://nicenickname.cn:2085/
 
 ```bash
 cd /opt/docker/learn-liangliang
-docker-compose -f docker-compose.yaml config
-docker-compose -f docker-compose.yaml up -d --build
-docker-compose -f docker-compose.yaml ps
-docker-compose -f docker-compose.yaml logs -f api
+docker compose -f docker-compose.yaml config
+docker compose -f docker-compose.yaml up -d --build
+docker compose -f docker-compose.yaml ps
+docker compose -f docker-compose.yaml logs -f api
 ```
 
-默认 `docker-compose -f docker-compose.yaml up -d` 仅启动 `api`；`content-sync` 因 `tools` profile 不会自动运行。API 启动时会执行数据库迁移，并创建或更新管理员账号。
+默认 `docker compose -f docker-compose.yaml up -d` 仅启动 `api`；`content-sync` 因 `tools` profile 不会自动运行。API 启动时会执行数据库迁移，并创建或更新管理员账号。
 
 若服务器网络无法访问 Go 官方模块服务，可仅在本次构建前临时指定模块代理和校验库：
 
 ```bash
 GOPROXY=https://goproxy.cn,direct GOSUMDB=sum.golang.google.cn \
-  docker-compose -f docker-compose.yaml up -d --build
+  docker compose -f docker-compose.yaml up -d --build
 ```
 
 该配置只作为 Docker 构建参数传入 `go mod download`，不会写入私有 `config.yaml` 或容器运行时环境；网络正常时无需设置，仍使用 Go 官方默认值。
@@ -317,7 +257,7 @@ curl -i http://127.0.0.1:8081/api/health
 
 ```bash
 cd /opt/docker/learn-liangliang
-docker-compose -f docker-compose.yaml --profile tools run --rm content-sync
+docker compose -f docker-compose.yaml --profile tools run --rm content-sync
 ```
 
 常驻 `api` 不挂载 `content/`，不会因同步工具运行而读取或修改归档文件。内容同步成功前，API 不会把文章视为活动内容或接受阅读进度写入。
@@ -329,22 +269,22 @@ docker-compose -f docker-compose.yaml --profile tools run --rm content-sync
 ```bash
 cd /opt/docker/learn-liangliang
 sudo -u postgres pg_dump learn_liangliang > "data/backup-$(date +%F-%H%M%S).sql"
-docker-compose -f docker-compose.yaml config
-docker-compose -f docker-compose.yaml up -d --build
-docker-compose -f docker-compose.yaml --profile tools run --rm content-sync
-docker-compose -f docker-compose.yaml logs -f api
+docker compose -f docker-compose.yaml config
+docker compose -f docker-compose.yaml up -d --build
+docker compose -f docker-compose.yaml --profile tools run --rm content-sync
+docker compose -f docker-compose.yaml logs -f api
 ```
 
 若更新不涉及 `content/` 或索引逻辑，可省略最后的 `content-sync` 命令。停止 API 容器：
 
 ```bash
-docker-compose -f docker-compose.yaml down
+docker compose -f docker-compose.yaml down
 ```
 
 该命令不会停止宿主机 Nginx 或 PostgreSQL，也不会删除宿主机数据库数据。仅停止 API 而保留 Compose 资源可执行：
 
 ```bash
-docker-compose -f docker-compose.yaml stop api
+docker compose -f docker-compose.yaml stop api
 ```
 
 ## 4. 本地非 Docker 开发
